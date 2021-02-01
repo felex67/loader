@@ -16,6 +16,7 @@ size_t get_endof_c_comment(char *);
 size_t trimm_spaces(char *);
 size_t trimm_nonquoted_spaces(char *);
 size_t find_nextQuote(const char, const char *);
+size_t trimm_emty_strings(char *Start);
 
 const char QuotePairs[][2] = { { '"', '"' }, { '\'', '\'' } };
 const char Braces[][2] = { { '(', ')'}, { '{' , '}' }, { '[', ']' } };
@@ -95,49 +96,69 @@ size_t trimm_spaces(char *Start) {
     *tgt = 0;
     return (tgt - Start);
 }
+/*
+    ЭТУ ФУНКЦИЮ НУЖНО ПЕРЕДЕЛАТЬ!!!
+    РАБОТАЕТ, НО МОЖНО И БЫСТРЕЙ
+    варианты ускорения
+    1. найти первый срез и продолжать без проверок идентичности указателей
+    2. копировать в буффер, потом мащинными словами скопировать обратно
+    3. подавать 2 буффера
+ */ 
 size_t trimm_nonquoted_spaces(char *Start) {
     unsigned char *tgt = (unsigned char *)Start, *src = (unsigned char*)Start;
     unsigned char Q = 0;
+    //для непонятливых =D
+    bool same = (tgt == src);
+    //после можно смело проверять на обратную косую
+    if ((*src == '"') || (*src == '\'') || (*src == '`')) { Q = *(src++); }
+    //покуда строка не кончилась
     while (*src != 0) {
-        // Это точно не ковычка
+        // Это точно НЕ ковычка
         if ('\'' < *src) {
-            if (tgt != src) { *tgt = *src; }
+            if (!same) { *tgt = *src; }
             ++tgt;
         }
         //может быть
         else {
-            switch (*src) {
-            //если ковычка
-            case '"':
-            case '`':
-            case '\'':
-                //может сохранить? 
-                if (0 != Q || ((char *)src == Start) || ('\\' != src[-1])) { Q = *src; }
-                
-                Q = *src;
-            default:
-                if ((' ' < *tgt) || ('\n' == *tgt)) {
-                    //либо перенос каретки, либо больше пробела
-                    if (tgt != src) { *tgt = *src; }
+            //точно - ковычка самая частая(") потом реже (') самая редкая (`)
+            if ((*src == '"') || (*src == '\'') || (*src == '`')) {
+                //ещё и без обратной косой
+                if ('\\' != src[-1]) {
+                    //если первая - всё просто =)
+                    if (!Q) { Q = *src; }
+                    //да т если вторая,- тоже
+                    else if (Q == *src) { Q = 0; }
+                }
+                if (!same) { *tgt = *src; }
+                ++tgt;
+            }
+            //точно НЕ ковычка
+            else {
+                //больше пробела или перенос каретки? 
+                if ((' ' < *src) || ('\n' == *src)) {
+                    if (!same) { *tgt = *src; }
                     ++tgt;
                 }
                 else {
                     /** точно что-то что нам НЕ нужно =)
                      * значит будет нолик, если это не пробел,
                      * или мы не в кавычках! */
-                    if ((' ' != *src) || (0 != Q))  {
+                    if (((' ' == *src) /* || ('\t' == *src) */) && (0 != Q))  {
                         // это пробел и мы в кавычках
-                        if (tgt != src) *tgt = *src;
+                        if (!same) *tgt = *src;
                         ++tgt;
                     }
-                    *src = 0;
+                    else {
+                        same = false;
+                    }
                 }
             }
+            if (!same) { *src = 0; }
         }
         ++src;
     }
     *tgt = 0;
-    return (tgt - Start);
+    return ((char *)tgt - Start);
 }
 size_t find_nextQuote(const char Q, const char *Start) {
     size_t n;
@@ -147,7 +168,18 @@ size_t find_nextQuote(const char Q, const char *Start) {
     }
     return n;
 }
-
+size_t trimm_emty_strings(char *Start) {
+    size_t t = 0, s = 0;
+    if ('\n' == *Start) { s = 1; }
+    else { while ((0 != Start[t]) && ('\n' != Start[t])) { ++t; } }
+    if (0 != Start[t]) {
+        for (s = t + 1 ; 0 < Start[s]; s++) {
+            if (Start[s])
+        }
+    }
+    Start[t] = 0;
+    return t;
+}
 
 int main (int argc, char **argv) {
     struct stat statbuff;
@@ -163,11 +195,13 @@ int main (int argc, char **argv) {
         printf("File: '%s'\n%s\n", "lin2db.cfg", buff);
         size = trimm_comments(buff);
         printf("comments removed, listing:\n%s\n", buff);
-        size = trimm_spaces(buff);
+        size = trimm_nonquoted_spaces(buff);
+        size = trimm_emty_strings(buff);
         printf("Spaces removed, listing:\n%s\n", buff);
         //size = strlen(buff);
         in = fopen("out.txt", "w");
         fwrite(buff, size, 1, in);
+        delete[] buff;
     }
     fcloseall();
     return 0;
