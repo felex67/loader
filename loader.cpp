@@ -1,5 +1,7 @@
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <cstring>
+#include <stdio.h>
 
 struct Entry {
     char *var;
@@ -7,16 +9,24 @@ struct Entry {
     Entry(char* var, char* val): var(var), val(val) {}
     ~Entry() { delete[] var; delete[] val; }
 };
+size_t get_closingQuote(char,const char *);
+size_t trimm_comments(char *);
+size_t trimm_line(char *);
+size_t get_endof_c_comment(char *);
+size_t trimm_spaces(char *);
+size_t trimm_nonquoted_spaces(char *);
+size_t find_nextQuote(const char, const char *);
 
 const char QuotePairs[][2] = { { '"', '"' }, { '\'', '\'' } };
 const char Braces[][2] = { { '(', ')'}, { '{' , '}' }, { '[', ']' } };
 const char *Comments[] = { "//", "#", "/*"};
 const short CStyle = {'//'};
+enum BraceSide { BrOpen, BrClose };
 
-size_t get_closingQuote(char Quote, const char* Start) {
-    for (size_t i = 0; Start[i] != Quote; i++) {
+size_t get_closingQuote(char ClosingQuote, const char* Start) {
+    for (size_t i = 0; Start[i] != ClosingQuote; i++) {
         if (Start[i]) {
-            if (Start[i] != Quote);
+            if (Start[i] != ClosingQuote);
             else {
                 if (Start[i - 1] != '\\') {
                     return i;
@@ -27,25 +37,138 @@ size_t get_closingQuote(char Quote, const char* Start) {
     }
     return 0;
 }
-size_t trimm_comments(char *Start, size_t MaxLen) {
-    size_t len = 0;
-    char *tgt = Start, *src = Start;
-    if ((*Start == '/') && (Start[1] == '/')) {
-        src += trimm_line(Start);
+size_t trimm_comments(char *Start) {
+    char *tgt, *src;
+    for (tgt = src = Start; (*src != 0); src++) {
+        if (0 != *src) {
+            if (';' < (*src)) { (*tgt) = (*src); ++tgt; }
+            else {
+                switch (*src) {
+                case '/':
+                    if (src[1] == '*') {
+                        src += get_endof_c_comment(src);
+                        break;
+                    }
+                case ';':
+                case '#':
+                    src += trimm_line(src);
+                    break;
+                default:
+                    *tgt = *src;
+                    ++tgt;
+                }
+            }
+        }
+        else { break; }
     }
-
+    *tgt = 0;
+    return (tgt - Start);
 }
 size_t trimm_line(char* Start) {
     char *temp = Start;
-    while (*temp && (*temp != '\n')) {
-        *temp++ = 0;
+    while ((*temp) && ((*temp) != '\n')) {
+        (*temp) = 0;
+        ++temp;
     }
-    if (*temp) {
-        *temp = 0;
-    }
-    return temp - Start + 1;
+    return (temp - Start - 1);
 }
+size_t get_endof_c_comment(char *Start) {
+    int n;
+    //find last
+    for (n = 2; 0 != Start[n]; n++ ) {
+        if ('/' != Start[n] || '*' != Start[n - 1]) {}
+        else { ++n; break; }
+    }
+    //erase part
+    for (int i = 0; i < n; i++) { Start[i] = 0; }
+    return n;
+}
+size_t trimm_spaces(char *Start) {
+    char *tgt = Start, *src = Start;
+    while (*src != 0) {
+        if ((' ' < *src) || ('\n' == *src)) {
+            if (tgt != src) { *tgt = *src; }
+            ++tgt;
+        }
+        ++src;
+    }
+    *tgt = 0;
+    return (tgt - Start);
+}
+size_t trimm_nonquoted_spaces(char *Start) {
+    unsigned char *tgt = (unsigned char *)Start, *src = (unsigned char*)Start;
+    unsigned char Q = 0;
+    while (*src != 0) {
+        // Это точно не ковычка
+        if ('\'' < *src) {
+            if (tgt != src) { *tgt = *src; }
+            ++tgt;
+        }
+        //может быть
+        else {
+            switch (*src) {
+            //если ковычка
+            case '"':
+            case '`':
+            case '\'':
+                //может сохранить? 
+                if (0 != Q || ((char *)src == Start) || ('\\' != src[-1])) { Q = *src; }
+                
+                Q = *src;
+            default:
+                if ((' ' < *tgt) || ('\n' == *tgt)) {
+                    //либо перенос каретки, либо больше пробела
+                    if (tgt != src) { *tgt = *src; }
+                    ++tgt;
+                }
+                else {
+                    /** точно что-то что нам НЕ нужно =)
+                     * значит будет нолик, если это не пробел,
+                     * или мы не в кавычках! */
+                    if ((' ' != *src) || (0 != Q))  {
+                        // это пробел и мы в кавычках
+                        if (tgt != src) *tgt = *src;
+                        ++tgt;
+                    }
+                    *src = 0;
+                }
+            }
+        }
+        ++src;
+    }
+    *tgt = 0;
+    return (tgt - Start);
+}
+size_t find_nextQuote(const char Q, const char *Start) {
+    size_t n;
+    for (n = 1; 0 != Start[n]; n++) {
+        if (Start[n] != Q || '\\' != Start[n - 1]);
+        else { break; }
+    }
+    return n;
+}
+
+
 int main (int argc, char **argv) {
-    
-    return 1;
+    struct stat statbuff;
+    char *buff;
+    size_t total;
+    FILE *in = fopen("lin2db.cfg", "r");
+    if (-1 != fstat(in->_fileno, &statbuff)) {
+        size_t size = statbuff.st_size;
+        buff = new char[size + 1];
+        fread(buff, size, 1, in);
+        fclose(in);
+        buff[size] = 0;
+        printf("File: '%s'\n%s\n", "lin2db.cfg", buff);
+        size = trimm_comments(buff);
+        printf("comments removed, listing:\n%s\n", buff);
+        size = trimm_spaces(buff);
+        printf("Spaces removed, listing:\n%s\n", buff);
+        //size = strlen(buff);
+        in = fopen("out.txt", "w");
+        fwrite(buff, size, 1, in);
+    }
+    fcloseall();
+    return 0;
 }
