@@ -2,6 +2,8 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <stdio.h>
+#include <vector>
+#include <string>
 
 struct Entry {
     char *var;
@@ -17,7 +19,7 @@ size_t trimm_spaces(char *);
 size_t trimm_nonquoted_spaces(char *);
 size_t find_nextQuote(const char, const char *);
 size_t trimm_emty_strings(char *Start);
-
+int process_loaded_file(char *, char *);
 const char QuotePairs[][2] = { { '"', '"' }, { '\'', '\'' } };
 const char Braces[][2] = { { '(', ')'}, { '{' , '}' }, { '[', ']' } };
 const char *Comments[] = { "//", "#", "/*"};
@@ -174,13 +176,32 @@ size_t trimm_emty_strings(char *Start) {
     else { while ((0 != Start[t]) && ('\n' != Start[t])) { ++t; } }
     if (0 != Start[t]) {
         for (s = t + 1 ; 0 < Start[s]; s++) {
-            if (Start[s])
+            if (Start[s]);
         }
     }
     Start[t] = 0;
     return t;
 }
-
+struct Loader {
+    int load_config(char *FileName) {
+        //get fileinfo
+        struct stat statbuf;
+        FILE *Config = fopen(FileName, "r");
+        if (!Config) {
+            perror("Error open file");
+            return -1;
+        }
+        if (-1 == fstat(Config->_fileno, &statbuf)) {
+            perror("Error gett fileinfo");
+            return 1;
+        }
+        Buffer = new char[statbuf.st_size];
+        size_t pos_in, pos_out;
+        
+    }
+    std::vector<char *> Strings;
+    char *Buffer;
+};
 int main (int argc, char **argv) {
     struct stat statbuff;
     char *buff;
