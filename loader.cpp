@@ -1,11 +1,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/io.h>
+#include <errno.h>
 #include <cstring>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
-#include <string>
 
 struct Entry {
     char *var;
@@ -140,15 +141,21 @@ size_t trimm_emty_strings(char *Start) {
 }
 
 struct Loader {
-    ~Loader() { free(iBuff); }
-private:
+    Loader() : eBuff() {}
+    ~Loader() {
+        if (nullptr != iBuff)
+            free(iBuff);
+        if (nullptr != wBuff)
+            free(wBuff);
+    }
+//private:
     /**
      * Загружает и отчищает файл от коментариев, разбивает на строки, удаляет пустые,
      * разбивает файл на группы(если они есть: [Имя группы])
     */
     int init_buffer(const char * FileName) {
         FILE *in;
-        if (nullptr != (iBuff = (char *)malloc(iBuffSz + 1))) {
+        if (nullptr != (iBuff = (unsigned char *)malloc(iBuffSz + 1))) {
             if (nullptr != (wBuff = (unsigned char *)malloc(iBuffSz + 1))) {
                 if (nullptr != (in = fopen(FileName, "r"))) {
                     wLen = fread(iBuff, iBuffSz, 1, in);
@@ -165,9 +172,10 @@ private:
         return error;
     }
     //Загружает файл и создаёт 2 буффера
-    int load_config(char *FileName) {
+    int load_config(const char *FileName) {
         //get fileinfo
         struct stat statbuf;
+        unsigned char* temp;
         //проверяем файл на наличие
         if (-1 == (error = stat(FileName, &statbuf))) {
             perror(FileName);
@@ -181,7 +189,7 @@ private:
         }
         //удаляем комменты
         trimm_comments();
-        
+        trimm_spaces();
         return 0;
     }
     //отчищает файл от комментариев
@@ -192,12 +200,12 @@ private:
                 switch (iBuff[pos_i]) {
                 case '/':
                     if (iBuff[pos_i + 1] == '*') {
-                        get_endof_c_comment((char *)iBuff + pos_i);
+                        get_endof_c_comment();
                         break;
                     }
                 case ';':
                 case '#':
-                    trimm_line_comment();
+                    get_endof_s_comment();
                     break;
                 default:
                     wBuff[pos_w++] = iBuff[pos_i];
@@ -205,6 +213,7 @@ private:
             }
         }
         wBuff[pos_w] = 0;
+        swap_buffers();
         return 0;
     }
     //вычисляет конец "Си" комментария
@@ -217,18 +226,53 @@ private:
     //вычисляет конец строчного коментария
     int get_endof_s_comment() {
         while ((0 != iBuff[pos_i]) && ('\n' != iBuff[pos_i])) { ++pos_i; }
+        return 0;
+    }
+    int trimm_spaces() {
+        unsigned char Q = 0;
+        if (('"' == iBuff[0])  || ('\'' == iBuff[0]) || ('`' == iBuff[0])) {
+            Q = iBuff[0];
+            wBuff[0] = iBuff[0];
+        }
+        for (pos_w = pos_i = (!Q ? 0 : 1); iBuff[pos_i] != 0; pos_i++) {
+            if (('`' != iBuff[pos_i]) && ('\'' < iBuff[pos_i])) { wBuff[pos_w++] = iBuff[pos_i]; }
+            else {
+                switch (iBuff[pos_i]) {
+                case ' ':
+                    if (!Q) {}
+                    else { wBuff[pos_w++] = iBuff[pos_i]; }
+                    break;
+                case '"':
+                case '\'':
+                case '`':
+                    if ('\\' != iBuff[pos_i - 1]) { Q = (Q ? 0 : iBuff[pos_i]); }
+                case '\t':
+                case '\n':
+                    wBuff[pos_w++] = iBuff[pos_i];
+                }
+            }
+        }
+        wBuff[pos_w] = 0;
+        swap_buffers();
+        return 0;
+    }
+    void swap_buffers() {
+        unsigned char *t = iBuff;
+        iBuff = wBuff;
+        wBuff = t;
+        pos_i = pos_w = 0;
     }
 
-    void perror(char * What) {
-        sprintf(eBuff, "ERROR [%i] '%s'", errno, What);
-        perror(eBuff);
+    void perror(const char * What) {
+        sprintf((char *)eBuff, "ERROR [%i] '%s'", errno, What);
+        perror((char *)eBuff);
     }
-    void perror(char * What, int Error) {
-        sprintf(eBuff, "ERROR [%i] '%s'", Error, What);
-        perror(eBuff);
+    void perror(const char * What, int Error) {
+        sprintf((char *)eBuff, "ERROR [%i] '%s'", Error, What);
+        perror((char *)eBuff);
     }
-
-private:
+//private:
+    char eBuff[2048];
     std::vector<char *> Strings;
 
     size_t wLen;
@@ -238,21 +282,15 @@ private:
     unsigned char *wBuff;
     size_t pos_w;
     
-    char eBuff[2048];
     int error;
 };
 char cfg[] = "lin2db.cf";
 int main (int argc, char **argv) {
-    char eBuff[1024];
-    struct stat statbuff;
-    char *buff;
-    size_t total;
-    if (-1 == stat(cfg, &statbuff)) {
-        sprintf(eBuff, "stat() -> %i '%s'", errno, cfg);
-        perror(eBuff);
-        return -1;
-    }
-    printf("File: %s size: %lu bytes\n", cfg, statbuff.st_size);
-    fcloseall();
+    char *temp;
+    Loader l;
+    l.load_config("lin2db.cfg");
+    FILE *out = fopen("out.txt", "r+");
+    write(out->_fileno, l.iBuff, strlen((char *)l.iBuff));
+    fclose(out);
     return 0;
 }
