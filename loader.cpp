@@ -1,6 +1,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <cstring>
+#include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <vector>
 #include <string>
@@ -39,52 +41,6 @@ size_t get_closingQuote(char ClosingQuote, const char* Start) {
         else { break; }
     }
     return 0;
-}
-size_t trimm_comments(char *Start) {
-    char *tgt, *src;
-    for (tgt = src = Start; (*src != 0); src++) {
-        if (0 != *src) {
-            if (';' < (*src)) { (*tgt) = (*src); ++tgt; }
-            else {
-                switch (*src) {
-                case '/':
-                    if (src[1] == '*') {
-                        src += get_endof_c_comment(src);
-                        break;
-                    }
-                case ';':
-                case '#':
-                    src += trimm_line(src);
-                    break;
-                default:
-                    *tgt = *src;
-                    ++tgt;
-                }
-            }
-        }
-        else { break; }
-    }
-    *tgt = 0;
-    return (tgt - Start);
-}
-size_t trimm_line(char* Start) {
-    char *temp = Start;
-    while ((*temp) && ((*temp) != '\n')) {
-        (*temp) = 0;
-        ++temp;
-    }
-    return (temp - Start - 1);
-}
-size_t get_endof_c_comment(char *Start) {
-    int n;
-    //find last
-    for (n = 2; 0 != Start[n]; n++ ) {
-        if ('/' != Start[n] || '*' != Start[n - 1]) {}
-        else { ++n; break; }
-    }
-    //erase part
-    for (int i = 0; i < n; i++) { Start[i] = 0; }
-    return n;
 }
 size_t trimm_spaces(char *Start) {
     char *tgt = Start, *src = Start;
@@ -182,48 +138,121 @@ size_t trimm_emty_strings(char *Start) {
     Start[t] = 0;
     return t;
 }
+
 struct Loader {
+    ~Loader() { free(iBuff); }
+private:
+    /**
+     * Загружает и отчищает файл от коментариев, разбивает на строки, удаляет пустые,
+     * разбивает файл на группы(если они есть: [Имя группы])
+    */
+    int init_buffer(const char * FileName) {
+        FILE *in;
+        if (nullptr != (iBuff = (char *)malloc(iBuffSz + 1))) {
+            if (nullptr != (wBuff = (unsigned char *)malloc(iBuffSz + 1))) {
+                if (nullptr != (in = fopen(FileName, "r"))) {
+                    wLen = fread(iBuff, iBuffSz, 1, in);
+                    error = errno;
+                    fclose(in);
+                    if (wLen != iBuffSz) { iBuff[iBuffSz] = 0; }
+                    else { perror("init_buffer()->fread()"); }
+                }
+                else { perror("init_buffer()->fopen()"); }
+            }
+            else { perror("init_buffer()->malloc(wBuffer)"); }
+        }
+        else { perror("init_buffer()->malloc(iBuffer)"); }
+        return error;
+    }
+    //Загружает файл и создаёт 2 буффера
     int load_config(char *FileName) {
         //get fileinfo
         struct stat statbuf;
-        FILE *Config = fopen(FileName, "r");
-        if (!Config) {
-            perror("Error open file");
+        //проверяем файл на наличие
+        if (-1 == (error = stat(FileName, &statbuf))) {
+            perror(FileName);
             return -1;
         }
-        if (-1 == fstat(Config->_fileno, &statbuf)) {
-            perror("Error gett fileinfo");
-            return 1;
+        iBuffSz = statbuf.st_size;
+        //зфагружаем в буффер
+        if (-1 == (error = init_buffer(FileName))) {
+            perror("init_buffer()");
+            return -1;
         }
-        Buffer = new char[statbuf.st_size];
-        size_t pos_in, pos_out;
+        //удаляем комменты
+        trimm_comments();
         
+        return 0;
     }
+    //отчищает файл от комментариев
+    int trimm_comments() {
+        for (pos_w = 0, pos_i = 0; 0 != iBuff[pos_i]; pos_i++) {
+            if (';' < iBuff[pos_i]) { wBuff[pos_w] = iBuff[pos_i]; ++pos_w; }
+            else {
+                switch (iBuff[pos_i]) {
+                case '/':
+                    if (iBuff[pos_i + 1] == '*') {
+                        get_endof_c_comment((char *)iBuff + pos_i);
+                        break;
+                    }
+                case ';':
+                case '#':
+                    trimm_line_comment();
+                    break;
+                default:
+                    wBuff[pos_w++] = iBuff[pos_i];
+                }
+            }
+        }
+        wBuff[pos_w] = 0;
+        return 0;
+    }
+    //вычисляет конец "Си" комментария
+    int get_endof_c_comment() {
+        for (pos_i+= 2; 0 != iBuff[pos_i]; pos_i++ ) {
+            if ('*' == iBuff[pos_i] && '/' == iBuff[pos_i + 1]) { pos_i++; break; }
+        }
+        return 0;
+    }
+    //вычисляет конец строчного коментария
+    int get_endof_s_comment() {
+        while ((0 != iBuff[pos_i]) && ('\n' != iBuff[pos_i])) { ++pos_i; }
+    }
+
+    void perror(char * What) {
+        sprintf(eBuff, "ERROR [%i] '%s'", errno, What);
+        perror(eBuff);
+    }
+    void perror(char * What, int Error) {
+        sprintf(eBuff, "ERROR [%i] '%s'", Error, What);
+        perror(eBuff);
+    }
+
+private:
     std::vector<char *> Strings;
-    char *Buffer;
+
+    size_t wLen;
+    size_t iBuffSz;
+    unsigned char *iBuff;
+    size_t pos_i;
+    unsigned char *wBuff;
+    size_t pos_w;
+    
+    char eBuff[2048];
+    int error;
 };
+char cfg[] = "lin2db.cf";
 int main (int argc, char **argv) {
+    char eBuff[1024];
     struct stat statbuff;
     char *buff;
     size_t total;
-    FILE *in = fopen("lin2db.cfg", "r");
-    if (-1 != fstat(in->_fileno, &statbuff)) {
-        size_t size = statbuff.st_size;
-        buff = new char[size + 1];
-        fread(buff, size, 1, in);
-        fclose(in);
-        buff[size] = 0;
-        printf("File: '%s'\n%s\n", "lin2db.cfg", buff);
-        size = trimm_comments(buff);
-        printf("comments removed, listing:\n%s\n", buff);
-        size = trimm_nonquoted_spaces(buff);
-        size = trimm_emty_strings(buff);
-        printf("Spaces removed, listing:\n%s\n", buff);
-        //size = strlen(buff);
-        in = fopen("out.txt", "w");
-        fwrite(buff, size, 1, in);
-        delete[] buff;
+    if (-1 == stat(cfg, &statbuff)) {
+        sprintf(eBuff, "stat() -> %i '%s'", errno, cfg);
+        perror(eBuff);
+        return -1;
     }
+    printf("File: %s size: %lu bytes\n", cfg, statbuff.st_size);
     fcloseall();
     return 0;
 }
