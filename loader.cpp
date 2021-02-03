@@ -1,27 +1,16 @@
-#pragma once
+#include "loader.hpp"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <cstring>
-#include <unistd.h>
-#include <stdlib.h>
-#include <iostream>
-
-struct __config_loader {
-public:
-    __config_loader(const char* FileName) { load_config(FileName); }
-    ~__config_loader() {
-        if (nullptr != iBuff) free(iBuff);
-        if (nullptr != wBuff) free(wBuff);
+    __config_loader::__config_loader(const char* FileName) : eBuff() {
+        load_config(FileName);
     }
-    operator bool () { return ((nullptr != iBuff) && (nullptr != wBuff)); }
-private:
-    /**
-     * Загружает и отчищает файл от коментариев, разбивает на строки, удаляет пустые
-    */
-    int init_buffer(const char * FileName) {
+    __config_loader::~__config_loader() {
+        if (nullptr != iBuff)
+            free(iBuff);
+        if (nullptr != wBuff)
+            free(wBuff);
+    }
+    __config_loader::operator bool () { return nullptr != iBuff; }
+    int __config_loader::init_buffer(const char * FileName) {
         //FILE *in;
         int in;
         if (!iBuffSz) return -1;
@@ -42,7 +31,7 @@ private:
         return error;
     }
     //Загружает файл и создаёт 2 буффера
-    int load_config(const char *FileName) {
+    int __config_loader::load_config(const char *FileName) {
         //get fileinfo
         struct stat statbuf;
         unsigned char* temp;
@@ -64,7 +53,7 @@ private:
         return 0;
     }
     //отчищает файл от комментариев
-    int trimm_comments() {
+    int __config_loader::trimm_comments() {
         for (pos_w = 0, pos_i = 0; 0 != iBuff[pos_i]; pos_i++) {
             if ('/' < iBuff[pos_i]) { wBuff[pos_w] = iBuff[pos_i]; ++pos_w; }
             else {
@@ -87,19 +76,19 @@ private:
         return 0;
     }
     //вычисляет конец "Си" комментария
-    int get_endof_c_comment() {
+    int __config_loader::get_endof_c_comment() {
         for (pos_i+= 2; 0 != iBuff[pos_i]; pos_i++ ) {
             if ('*' == iBuff[pos_i] && '/' == iBuff[pos_i + 1]) { pos_i++; break; }
         }
         return 0;
     }
     //вычисляет конец строчного коментария
-    int get_endof_s_comment() {
+    int __config_loader::get_endof_s_comment() {
         while ((0 != iBuff[pos_i]) && ('\n' != iBuff[pos_i])) { ++pos_i; }
         --pos_i;
         return 0;
     }
-    int trimm_spaces() {
+    int __config_loader::trimm_spaces() {
         unsigned char Q = 0;
         if (('"' == iBuff[0])  || ('\'' == iBuff[0]) || ('`' == iBuff[0])) {
             Q = iBuff[0];
@@ -127,7 +116,7 @@ private:
         swap_buffers();
         return 0;
     }
-    int trimm_emty_strings() {
+    int __config_loader::trimm_emty_strings() {
         size_t len = 0;
         for (pos_w = pos_i = 0; 0 != iBuff[pos_i]; pos_i++) {
             if('\n' != iBuff[pos_i]) { wBuff[pos_w++] = iBuff[pos_i]; ++len; }
@@ -140,29 +129,18 @@ private:
         swap_buffers();
         return 0;
     }
-    void swap_buffers() {
+    void __config_loader::swap_buffers() {
         unsigned char *t = wBuff;
         wBuff = iBuff;
         iBuff = t;
         iBuffSz = pos_i;
         pos_i = pos_w = 0;
     }
-protected:
-    void perror(const char * What) {
+    void __config_loader::perror(const char * What) {
         sprintf((char *)eBuff, "ERROR [%i] '%s'", errno, What);
         perror((char *)eBuff);
     }
-    void perror(const char * What, int Error) {
+    void __config_loader::perror(const char * What, int Error) {
         sprintf((char *)eBuff, "ERROR [%i] '%s'", Error, What);
         perror((char *)eBuff);
     }
-protected:
-    char eBuff[2048];
-    size_t wLen;
-    size_t iBuffSz;
-    unsigned char *iBuff;
-    size_t pos_i;
-    unsigned char *wBuff;
-    size_t pos_w;
-    int error;
-};
