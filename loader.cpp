@@ -8,8 +8,9 @@
             free(iBuff);
         if (nullptr != wBuff)
             free(wBuff);
+        iBuff = wBuff = nullptr;
     }
-    __config_loader::operator bool () { return nullptr != iBuff; }
+    __config_loader::operator bool () { return (iBuff && wBuff); }
     int __config_loader::init_buffer(const char * FileName) {
         //FILE *in;
         int in;
