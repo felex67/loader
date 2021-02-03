@@ -1,6 +1,0 @@
-[ODBC]
-DRIVER="SQL Server"
-UID="ftgsc4pts\"adfsdfa"
-DATABASE="lin2db"
-WSID="PC-FTWEBDEV"
-SERVER="PC-FTWEBDEV\SQLEXPRESS"
