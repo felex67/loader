@@ -26,7 +26,7 @@ int process_loaded_file(char *, char *);
 const char QuotePairs[][2] = { { '"', '"' }, { '\'', '\'' } };
 const char Braces[][2] = { { '(', ')'}, { '{' , '}' }, { '[', ']' } };
 const char *Comments[] = { "//", "#", "/*"};
-const short CStyle = {'//'};
+
 enum BraceSide { BrOpen, BrClose };
 
 size_t get_closingQuote(char ClosingQuote, const char* Start) {
