@@ -1,6 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/io.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <cstring>
 #include <unistd.h>
@@ -154,14 +154,16 @@ struct Loader {
      * разбивает файл на группы(если они есть: [Имя группы])
     */
     int init_buffer(const char * FileName) {
-        FILE *in;
+        //FILE *in;
+        int in;
+        if (!iBuffSz) return -1;
         if (nullptr != (iBuff = (unsigned char *)malloc(iBuffSz + 1))) {
             if (nullptr != (wBuff = (unsigned char *)malloc(iBuffSz + 1))) {
-                if (nullptr != (in = fopen(FileName, "r"))) {
-                    wLen = fread(iBuff, iBuffSz, 1, in);
+                if (-1 != (in = open(FileName, O_RDONLY))) {
+                    wLen = read(in, iBuff, iBuffSz);
                     error = errno;
-                    fclose(in);
-                    if (wLen != iBuffSz) { iBuff[iBuffSz] = 0; }
+                    close(in);
+                    if (wLen == iBuffSz) { iBuff[iBuffSz] = 0; }
                     else { perror("init_buffer()->fread()"); }
                 }
                 else { perror("init_buffer()->fopen()"); }
@@ -190,6 +192,7 @@ struct Loader {
         //удаляем комменты
         trimm_comments();
         trimm_spaces();
+        trimm_emty_strings();
         return 0;
     }
     //отчищает файл от комментариев
@@ -226,6 +229,7 @@ struct Loader {
     //вычисляет конец строчного коментария
     int get_endof_s_comment() {
         while ((0 != iBuff[pos_i]) && ('\n' != iBuff[pos_i])) { ++pos_i; }
+        --pos_i;
         return 0;
     }
     int trimm_spaces() {
@@ -234,7 +238,7 @@ struct Loader {
             Q = iBuff[0];
             wBuff[0] = iBuff[0];
         }
-        for (pos_w = pos_i = (!Q ? 0 : 1); iBuff[pos_i] != 0; pos_i++) {
+        for (pos_w = pos_i = (!Q ? 0 : 1); 0 != iBuff[pos_i]; pos_i++) {
             if (('`' != iBuff[pos_i]) && ('\'' < iBuff[pos_i])) { wBuff[pos_w++] = iBuff[pos_i]; }
             else {
                 switch (iBuff[pos_i]) {
@@ -256,10 +260,24 @@ struct Loader {
         swap_buffers();
         return 0;
     }
+    int trimm_emty_strings() {
+        size_t len = 0;
+        for (pos_w = pos_i = 0; 0 != iBuff[pos_i]; pos_i++) {
+            if('\n' != iBuff[pos_i]) { wBuff[pos_w++] = iBuff[pos_i]; ++len; }
+            else {
+                if (len > 0) { wBuff[pos_w++] = iBuff[pos_i]; len = 0; }
+            }
+        }
+        wBuff[pos_w] = 0;
+        if ('\n' == wBuff[pos_w - 1]) { wBuff[--pos_w] = 0; }
+        swap_buffers();
+        return 0;
+    }
     void swap_buffers() {
         unsigned char *t = iBuff;
         iBuff = wBuff;
         wBuff = t;
+        iBuffSz = pos_w;
         pos_i = pos_w = 0;
     }
 
@@ -288,9 +306,11 @@ char cfg[] = "lin2db.cf";
 int main (int argc, char **argv) {
     char *temp;
     Loader l;
-    l.load_config("lin2db.cfg");
-    FILE *out = fopen("out.txt", "r+");
-    write(out->_fileno, l.iBuff, strlen((char *)l.iBuff));
-    fclose(out);
+    if (-1 == l.load_config("lin2db.cfg")) {
+        return -1;
+    }
+    int out = open("out.txt", O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG |  S_IRWXO);
+    write(out, l.iBuff, l.iBuffSz);
+    close(out);
     return 0;
 }
