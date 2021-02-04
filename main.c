@@ -1,3 +1,8 @@
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "loader.hpp"
 
 int main (int argc, char **argv) {
