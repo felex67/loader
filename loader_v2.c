@@ -15,7 +15,7 @@
 #endif // nullptr
 
 /*********************************** class Config ***********************************/
-/* Объявление конструкторов */
+/* Инициализирующие структуры */
     struct __config_loader_var __config_loader_init_struct_var = {
         .Var = nullptr,
         .Val = nullptr
@@ -195,6 +195,15 @@
         config_loader_sort_charset(CS);
         return 0;
     }
+    // сортирует символы и выставляет максимумы
+    int config_loader_sort_charset(struct __config_loader_charset *CS) {
+        config_loader_strsort_za((char*)CS->NotSpace);
+        config_loader_strsort_za((char*)CS->LineComm);
+        config_loader_strsort_za((char*)CS->Quotes);
+        *(char*)&(CS->gQ) = CS->Quotes[0];
+        *(char*)&(CS->gC) = CS->LineComm[0];
+        return 0;
+    }
 
 /********************************* struct __config_loader_errors **********************************/
 
@@ -262,15 +271,6 @@
 
 /*****************************************************************************************************/
 /* Функции */
-    // сортирует символы и выставляет максимумы
-    int config_loader_sort_charset(struct __config_loader_charset *CS) {
-        config_loader_strsort_za((char*)CS->NotSpace);
-        config_loader_strsort_za((char*)CS->LineComm);
-        config_loader_strsort_za((char*)CS->Quotes);
-        *(char*)&(CS->gQ) = CS->Quotes[0];
-        *(char*)&(CS->gC) = CS->LineComm[0];
-        return 0;
-    }
     // меняет символы местами
     int config_loader_swap_c(char *c1, char *c2) {
         char t = *c1;
