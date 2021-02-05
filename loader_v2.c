@@ -11,7 +11,7 @@
 #include "loader_v2.h"
 
 #ifndef nullptr
-    #define nullptr ((void*)0)
+    #define nullptr (0)
 #endif // nullptr
 
 /*********************************** class Config ***********************************/
@@ -21,9 +21,9 @@
         .Val = nullptr
     };
     struct __config_loader_var_group __config_loader_init_struct_group = {
-        .Name = nullptr,
         .count = 0,
-        .Vars = nullptr,
+        .Name = nullptr,
+        .Vars = nullptr
     };
     struct __config_loader_var_groups __config_loader_init_struct_groups = {
         .count = 0,
@@ -45,6 +45,8 @@
             Inst->Errors = __config_loader_init_struct_errors;
             Inst->Errors.unFl.s_flags.DynInst = ((nullptr == Ptr) ? 1 : 0);
             Inst->Config = __config_loader_init_struct_groups;
+            Inst->pBuffer = (char**)&(Inst->Buffers.In);
+            Inst->pBuffSz = &Inst->Buffers.iSz;
             //
             Inst->load = config_loader_process_file;
             Inst->clear = config_loader_destruct_buffers;
@@ -183,7 +185,8 @@
     const char __config_loader_default_quotes[] = "`'\"";
     const char __config_loader_default_lcomm[] = ";#";
     const char __config_loader_default_nonspace[] = "\n\t";
-    const char __config_loader_default_group[] = "[]";
+    const char __config_loader_default_group_begin[] = "[";
+    const char __config_loader_default_group_end[] = "[";
 /* Конструктор */
     int config_loader_construct_charset(struct __config_loader_charset *CS) {
         strncpy((char*)CS->NotSpace, __config_loader_default_nonspace, sizeof(CS->NotSpace) - 1);
@@ -344,15 +347,118 @@
         }
         return -1;
     }
-    
 
+/* Рабочая область */
+    struct __config_loader_pointer_counter {
+        struct __config_loader *Inst;
+        size_t Groups;
+        size_t Vars;
+        unsigned char *Buff;
+    };
+
+    int config_loader_count_multi1(struct __config_loader_pointer_counter *);
+    int config_loader_count_multi2(struct __config_loader_pointer_counter *);
+    size_t config_loader_count_simple(const unsigned char *, const unsigned char);
+
+    int config_loader_build_groups(struct __config_loader *Inst) {
+        struct __config_loader_pointer_counter Ctr = {
+            .Inst = Inst,
+            .Groups = 0,
+            .Vars = 0,
+            .Buff = Inst->Buffers.In
+        };
+        unsigned char * in = Inst->Buffers.In;
+        size_t *pi = &(Inst->Buffers.Pi);
+        struct __config_loader_var_groups *Groups = &(Inst->Config);
+        unsigned char* SecStr = 0;
+        int equals = 0;
+        int tabs = 0;
+        int same = 0;
+        errno = 0;
+        // анализируем первую строку
+        // если в ней присутсвует один знак равно, значит это просто набор переменных
+        // если нет ни того ни другого, то скорее всего это имя группы, причём в квадратных скобках
+        // а если знаков равно много, да ещё и с табуляцией, то, тогда каждая строка - это отдельная группа
+        // в этом мы убедимся при дальнейшем разборе, а может и не станем заморачиваться =)
+        for (int i = 0; '\000' != in[i]; i++) {
+            if ('=' < in[i]) {}
+            // знак равно
+            else if ('=' == in[i]) { ++equals; }
+            // знак табуляции
+            else if ('\t' == in[i]) { ++tabs; }
+            // новая строка, указатель сохраним =)
+            else if ('\n' == in[i]) { SecStr = in + i + 1; break; }
+        }
+        /*  теперь смотрим что у нас получилось... */
+        if (!equals) {
+            /*  это название группы предположим что начинается с квадратной скобки...
+                рассматриваем файл как разделённый на группы, на одну строку одна переменная */
+            errno = config_loader_count_multi1(&Ctr);
+        }
+        else if ((1 <= equals) && !(tabs)) {
+            // это просто набор переменных по одной в строке
+            Ctr.Vars += config_loader_count_simple(in, '\n');
+            Ctr.Groups = 1;
+        }
+        else if (tabs <= (equals + 1)) {
+            // каждая строка - отдельная группа, с кулючём начала и конца
+            for (int i = 0; '\t' != in[i]; i++) {
+                if (in[i] != SecStr[i]) { errno = EILSEQ; }
+            }
+            if (0 == errno) { errno = config_loader_count_multi2(&Ctr); }
+        }
+        else {
+            // даже и предположений никаких нет...
+            errno = EILSEQ;
+        }
+        return (!errno ? 0 : -1);
+    }
+    // Считает количество символьных переменных в Buff разделённых между собой символом Sep
+    size_t config_loader_count_simple(const unsigned char *Buff, const unsigned char Sep) {
+        size_t n = 0;
+        for (size_t i = 0; Buff[i]; i++) {
+            if (Sep != Buff[i]) {}
+            else { ++n; }
+        }
+        return n;
+    }
+    // считаем количество переменных в именнованных гркппах
+    int config_loader_count_multi1(struct __config_loader_pointer_counter *Cntr) {
+        unsigned char *in = Cntr->Buff;
+        size_t *grps = &(Cntr->Groups) + 1;
+        size_t *vars = &(Cntr->Vars);
+        size_t pi = 1;
+        char *Start = (char *)Cntr->Buff;
+        unsigned char gprstart[] = { '\n', in[0], 0x00 };
+        for (pi = 1; 0 != in[pi]; pi++) {
+            if ('\n' < in[pi]) {}
+            else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++(*vars); }
+            else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++(*grps); }
+        }
+        return 0;
+    }
+    int config_loader_count_multi2(struct __config_loader_pointer_counter *V) { return -1; }
+    int count_multi1(size_t *Grps, size_t *Vars, const char *Buff) {
+        unsigned char *in = (unsigned char *)Buff;
+        size_t *grps = Grps;
+        size_t *vars = Vars;
+        size_t pi = 1;
+        const char *Start = Buff;
+        unsigned char gprstart[] = { '\n', in[0], 0x00 };
+        for (pi = 1; 0 != in[pi]; pi++) {
+            if ('\n' < in[pi]) {}
+            else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++pi; ++(*vars); }
+            else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++pi; ++(*grps); }
+        }
+        ++(*grps);
+        return 0;
+    }
 int main (const int argc, const char *argv[]) {
     struct __config_loader *CL = config_loader_construct(nullptr);
+    size_t Grps = 0, Vars = 0;
     if (!CL->load(CL, "log.cfg")) {
-        int fout = open("out.cfg", O_CREAT | O_TRUNC | O_RDWR, S_IRWXU | S_IRWXG | S_IRWXO);
-        write(fout, CL->Buffers.In, CL->Buffers.iSz);
-        close(fout);
-        printf("Cleared:\n%s\n", (char*)CL->Buffers.In);
+        count_multi1(&Grps, &Vars, *CL->pBuffer);
+        printf("Groups: %lu Vars: %lu\n", Grps, Vars);
     }
     CL->destruct(CL);
     return 0;

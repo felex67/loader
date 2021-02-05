@@ -9,6 +9,9 @@
 #define __config_loader_h__ 1
 
 #include <sys/types.h>
+
+extern int errno;
+
 struct __config_loader;
 /*************************************************************************************************************/
     typedef struct __config_loader_var {
@@ -117,6 +120,9 @@ struct __config_loader;
         struct __config_loader_errors Errors;
         // Выходная структура
         struct __config_loader_var_groups Config;
+        // Указвтель на очищеный входной буффер
+        char **pBuffer;
+        size_t *pBuffSz;
     };
     /* конструктор класса */
     struct __config_loader* config_loader_construct(void* ptr);
