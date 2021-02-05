@@ -25,8 +25,8 @@
         .unFl = { 0 }
     };
     struct __loader_buffers __loader_init_buffers = {
-        .In = nullptr,
-        .Wrk = nullptr,
+        .In = 0,
+        .Wrk = 0,
         .iSz = 0,
         .Pi = 0,
         .Pw = 0
@@ -57,7 +57,7 @@
     }
 /* деструктор */
     void loader_cleanup_instance(struct __config_loader *Ptr) {
-        if (Ptr->Errors.unFl.s_flags.Init) loader_clear_buffers(Ptr);
+        if (Ptr->Errors.unFl.s_flags.Init) loader_cleanup_buffers(Ptr);
         if (Ptr->Errors.unFl.s_flags.DynInst) free(Ptr);
     }
     void loader_cleanup_buffers(struct __config_loader *Inst) {
@@ -83,7 +83,7 @@
         //get fileinfo
         struct stat statbuf;
         unsigned char* temp;
-        int *error = I->Errors.error;
+        int *error = &(I->Errors.error);
         struct __loader_buffers *Buff = &(I->Buffers);
         //проверяем файл на наличие
         if (-1 == (*error = stat(FileName, &statbuf))) {
@@ -97,10 +97,9 @@
             return -1;
         }
         else { I->Errors.unFl.s_flags.Init = 1; }
-        //удаляем комменты
-        loader_trimm_comments(I);
-        loader_trimm_spaces(I);
-        loader_trimm_emty_strings(I);
+        // вычищаем файл
+        loader_clean_file(I);
+        loader_trimm_emty_strings(&(I->Buffers));
         return 0;
     }
     // очищает буферы
@@ -140,49 +139,90 @@
         return CL->Errors.error;
     }
     // инициализирует набор символов
-    int loader_init_charset(const struct __loader_charset *CS) {
+    int loader_init_charset(struct __loader_charset *CS) {
         strncpy((char*)CS->NotSpace, loader_NonSpaceChars, sizeof(CS->NotSpace) - 1);
         strncpy((char*)CS->LineComm, loader_default_lcomm, sizeof(CS->LineComm) - 1);
         strncpy((char*)CS->Quotes, loader_default_quotes, sizeof(CS->Quotes) - 1);
-        *(char*)CS->NotSpace[sizeof(CS->NotSpace) - 1] = 0;
-        *(char*)CS->LineComm[sizeof(CS->LineComm) - 1] = 0;
-        *(char*)CS->Quotes[sizeof(CS->Quotes) - 1] = 0;
+        *(char*)&(CS->NotSpace[sizeof(CS->NotSpace) - 1]) = 0;
+        *(char*)&(CS->LineComm[sizeof(CS->LineComm) - 1]) = 0;
+        *(char*)&(CS->Quotes[sizeof(CS->Quotes) - 1]) = 0;
+        loader_sort_charset(CS);
+        return 0;
     }
     // сортирует символы и выставляет максимумы
-    int loader_sort_charset(const struct __loader_charset *CS) {
+    int loader_sort_charset(struct __loader_charset *CS) {
         loader_strsort_za((char*)CS->NotSpace);
         loader_strsort_za((char*)CS->LineComm);
         loader_strsort_za((char*)CS->Quotes);
-        *(char*)CS->gQ = CS->Quotes[0];
-        *(char*)CS->gC = CS->LineComm[0];
-    }
-    // отчищает файл от комментариев
-    /*
-    int loader_trimm_comments(struct __config_loader *I) {
-        for (I->pw = 0, I->pi = 0; 0 != I->iBuff[I->pi]; I->pi++) {
-            if (';' < I->iBuff[I->pi]) { I->wBuff[(I->pw)++] = I->iBuff[I->pi]; }
-            else {
-                switch (I->iBuff[I->pi]) {
-                case ';':
-                case '#':
-                    loader_get_endof_s_comment(I);
-                    break;
-                case '/':
-                    if (I->iBuff[I->pi + 1] == '*') {
-                        loader_get_endof_c_comment(I);
-                        break;
-                    }
-                default:
-                    I->wBuff[(I->pw)++] = I->iBuff[I->pi];
-                }
-            }
-        }
-        I->wBuff[I->pw] = 0;
-        loader_swap_buffers(I);
+        *(char*)&(CS->gQ) = CS->Quotes[0];
+        *(char*)&(CS->gC) = CS->LineComm[0];
         return 0;
     }
-    
-    */
+    // устанавливает пользовательский набор строковых комментариев
+    int loader_set_scomments(struct __config_loader *I, const char *Keys) {
+        struct __loader_charset *CS = &(I->Charset);
+        if (nullptr != Keys) {
+            strncpy((char*)CS->LineComm, Keys, sizeof(CS->LineComm) - 1);
+            ((char*)CS->LineComm)[sizeof(CS->LineComm) - 1] = 0;
+            loader_sort_charset(CS);
+            return 0;
+        }
+        errno == EINVAL;
+        return -1;
+    }
+    // отчищает файл от комментариев
+    int loader_clean_file(struct __config_loader *I) {
+        if (!I->Errors.unFl.s_flags.Init) return -1;
+        // pos & size
+        size_t *pi = &(I->Buffers.Pi), *pw = &(I->Buffers.Pw), *iSz = &(I->Buffers.iSz);
+        // buffers
+        unsigned char *in = I->Buffers.In, *wrk = I->Buffers.Wrk;
+        // chars
+        char *Qts = (char*)I->Charset.Quotes;
+        char *Com = (char*)I->Charset.LineComm;
+        char *NSp = (char*)I->Charset.NotSpace;
+        // max chars
+        char *gQ = (char*)&(I->Charset.gQ), *gC = (char *)&(I->Charset.gC);
+        char *tchar;
+        unsigned char Q = 0;
+        unsigned char mchar = (unsigned char)(*gQ < *gC ? *gC : *gQ);
+        for (*pi = 0, *pw = 0; *pi < *iSz; (*pi)++) {
+            // помимо тех что больше максимального искомого символа исключаем алфавит и цифры
+            if ((in[*pi] > mchar) || ('A' <= in[*pi] && 'Z' >= in[*pi]) || (('0' <= in[*pi]) && ('9' >= in[*pi]))) {
+                wrk[(*pw)++] = in[*pi];
+            }
+            // это ковычка
+            else if (nullptr != (tchar = strchr(Qts, in[*pi]))) {
+                do {
+                    wrk[(*pw)++] = in[(*pi)++];
+                } while ((0 != in[*pi]) && (('"' != in[*pi]) || ('\\' == in[(*pi) - 1])));
+                wrk[(*pw)++] = in[*pi];
+            }
+            // это строковый коммент
+            else if (nullptr != (tchar = strchr(Com, in[*pi]))) {
+                while ('\n' != in[*pi]) { ++(*pi); }
+                wrk[(*pw)++] = in[*pi];
+            }
+            // возможно Си коммент 
+            else if (in[*pi] == '/') {
+                if ('/' == in[(*pi) + 1]) {
+                    while ('\n' != in[*pi]) { ++(*pi); }
+                    wrk[(*pw)++] = in[*pi];
+                }
+                else if ('*' == in[(*pi) + 1]) {
+                    do { (*pi++); } while (('*' != in[*pi]) && ('/' != in[(*pi) + 1]));
+                    ++(*pi);
+                }
+                else {
+                    wrk[(*pw)++] = in[*pi];
+                }
+            }
+            // необходимый служебный символ: '\t' || '\n'
+            else if ((' ' < in[(*pi)]) || (nullptr != (tchar = strchr(NSp, in[*pi])))) { wrk[(*pw)++] = in[*pi]; }
+        }
+        loader_swap_buffers(&(I->Buffers));
+        return 0;
+    }
     // вычисляет конец "Си" комментария
     int loader_endof_c_comment(struct __loader_buffers *B) {
         for (B->Pi += 2; 0 != (B->In[B->Pi]); (B->Pi)++ ) {
@@ -196,71 +236,23 @@
         --(I->Pi);
         return 0;
     }
-    /*
-    // удаляет пробелы
-    int loader_trimm_spaces(struct __config_loader *Inst) {
-        unsigned char Q = 0;
-        if (('"' == I->iBuff[0])  || ('\'' == I->iBuff[0]) || ('`' == I->iBuff[0])) {
-            Q = I->iBuff[0];
-            I->wBuff[0] = I->iBuff[0];
-        }
-        for (I->pw = I->pi = (!Q ? 0 : 1); 0 != I->iBuff[I->pi]; I->pi++) {
-            if (('`' != I->iBuff[I->pi]) && ('\'' < I->iBuff[I->pi])) { I->wBuff[I->pw++] = I->iBuff[I->pi]; }
-            else {
-                switch (I->iBuff[I->pi]) {
-                case ' ':
-                    if (!Q) {}
-                    else { I->wBuff[(I->pw)++] = I->iBuff[I->pi]; }
-                    break;
-                case '"':
-                case '\'':
-                case '`':
-                    if ('\\' != I->iBuff[I->pi - 1]) { Q = (Q ? 0 : I->iBuff[I->pi]); }
-                case '\t':
-                case '\n':
-                    I->wBuff[(I->pw)++] = I->iBuff[I->pi];
-                    break;
-                default:
-                    if (' ' < I->iBuff[I->pi]) {
-                        I->wBuff[(I->pw)++] = I->iBuff[I->pi];
-                    }
-                }
-            }
-        }
-        I->wBuff[I->pw] = 0;
-        loader_swap_buffers(I);
-        return 0;
-    } */
-    int loader_set_scomments(struct __config_loader *I, const char *Keys) {
-        struct __loader_charset *CS = &(I->Charset);
-        if (nullptr != Keys) {
-            strncpy((char*)CS->LineComm, Keys, sizeof(CS->LineComm) - 1);
-            ((char*)CS->LineComm)[sizeof(CS->LineComm) - 1] = 0;
-            loader_sort_charset(CS);
-            return 0;
-        }
-        errno == EINVAL;
-        return -1;
-    }
     // удаляет пустые строки
     int loader_trimm_emty_strings(struct __loader_buffers *I) {
         size_t len = 0;
         for (I->Pw = I->Pi = 0; 0 != I->In[I->Pi]; (I->Pi)++) {
             if('\n' != I->In[I->Pi]) { I->Wrk[(I->Pw)++] = I->In[I->Pi]; ++len; }
-            else {
-                if (len > 1) { I->In[(I->Pw)++] = I->In[I->Pi]; len = 0; }
-            }
+            else if (len > 0){ I->Wrk[(I->Pw)++] = I->In[I->Pi]; len = 0; }
         }
         I->In[I->Pw] = 0;
-        if ('\n' == I->In[I->Pw - 1]) { I->In[--(I->Pw)] = 0; }
+        if ('\n' == I->Wrk[I->Pw - 1]) { I->Wrk[--(I->Pw)] = 0; }
         loader_swap_buffers(I);
         return 0;
     }
     // меняет буфферы местами
     void loader_swap_buffers(struct __loader_buffers *b) {
-        unsigned char *t = b->Wrk;
-        b->Wrk = b->In;
-        b->In = t;
+        unsigned char *t = b->In;
+        b->In = b->Wrk;
+        b->Wrk = t;
         b->iSz = b->Pw;
         b->In[b->Pw] = 0;
         b->Pi = b->Pw = 0;
@@ -311,7 +303,7 @@
             for ( i = 0, fwd = 1; (0 != a[i]); ) {
                 if ((0 != a[i + 1]) && swapped) { fwd = 0; }
                 if (a[i] < a[i + 1]) {
-                    swap_chars(&(a[i]), &(a[i + 1]));
+                    loader_swap_c(&(a[i]), &(a[i + 1]));
                     swapped = 1;
                 }
                 if (i);
@@ -342,3 +334,15 @@
     }
     
 #undef nullptr
+
+int main (const int argc, const char *argv[]) {
+    struct __config_loader *CL = loader_construct(0);
+    if (!CL->load(CL, "log.cfg")) {
+        int fout = open("out.cfg", O_CREAT | O_TRUNC | O_RDWR, S_IRWXU | S_IRWXG | S_IRWXO);
+        write(fout, CL->Buffers.In, CL->Buffers.iSz);
+        close(fout);
+        printf("Cleared:\n%s\n", (char*)CL->Buffers.In);
+    }
+    CL->destruct(CL);
+    return 0;
+}

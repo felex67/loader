@@ -92,23 +92,27 @@
     
     
 /* защищённые функции */
-    #ifdef __config_loader_c__
+    //#ifdef __config_loader_c__
     /* деструкторы */
         void loader_cleanup_instance(struct __config_loader *Ptr);
         void loader_cleanup_buffers(struct __config_loader *Inst);
         void loader_cleanup_groups(struct Config_Groups *Gps);
         void loader_cleanup_group(cfggrp_t *Grp);
     /* функции(методы) */
+        int loader_set_scomments(struct __config_loader *I, const char *Keys);
+        // инициализирует набор символов
+        int loader_init_charset(struct __loader_charset *CS);
+        int loader_sort_charset(struct __loader_charset *CS);
+        // 1 - если успешно загружен, 0 - в случае ошибки
+        int loader_isInit(struct __config_loader *Inst);
         // инициализирует буфферы и считывает в них файл
-        int loader_process_file(struct __config_loader *CL, const char *FileName);
         int loader_init_buffers(struct __config_loader *CL, const char *FileName);
-        int loader_init_charset(const struct __loader_charset *CS);
+        int loader_process_file(struct __config_loader *CL, const char *FileName);
+        int loader_clean_file(struct __config_loader *I);
         // вычисляет конец "Си" комментария
         int loader_endof_c_comment(struct __loader_buffers *I);
         // вычисляет конец строчного коментария
         int loader_endof_s_comment(struct __loader_buffers *I);
-        // удаляет пробелы
-        int loader_trimm_spaces(struct __config_loader *I);
         // удаляет пустые строки
         int loader_trimm_emty_strings(struct __loader_buffers *I);
         // меняет буфферы местами
@@ -123,6 +127,6 @@
         int loader_strsort_za(char *a);
         // разворачивает строку
         int loader_strinverse(char *a);
-    #endif //__config_loader_c__
+    //#endif //__config_loader_c__
 
 #endif // __config_loader_h__
