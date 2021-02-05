@@ -2,48 +2,59 @@
  * Загрузчик версии 2. Расчитан на динамическую компановку,
  * для статической компановки необходимр убрать макрос
  * #ifdef __config_loader_c__
+ * 
 */
 
 #ifndef __config_loader_h__
 #define __config_loader_h__ 1
 
 #include <sys/types.h>
-
-    typedef struct __config_var {
+struct __config_loader;
+/*************************************************************************************************************/
+    typedef struct __config_loader_var {
         char *Var;
         char *Val;
-    } cfgvar_t;
-    typedef struct __config_group {
-        char *Name;
-        size_t count;
-        cfgvar_t *Vars;
-        void (*destruct)(struct __config_group*);
-    } cfggrp_t;
-    struct Config_Groups {
-        size_t count;
-        cfggrp_t **Groups;
-        void (*destruct)(struct Config_Groups*);
-    };
+    } config_variable_t;
+    struct __config_loader_var __config_loader_init_struct_var;
 
-    struct __loader_flags {
+    typedef struct __config_loader_var_group {
+        size_t count;
+        char *Name;
+        config_variable_t *Vars;
+    } config_group_t;
+    extern struct __config_loader_var_group __config_loader_init_struct_group;
+
+    struct __config_loader_var_groups {
+        size_t count;
+        config_group_t **Groups;
+        // Деструктор
+        void (*destruct)(struct __config_loader_var_groups*);
+    };
+    extern struct __config_loader_var_groups __config_loader_init_struct_groups;
+    void config_loader_destruct_groups(struct __config_loader_var_groups *Gps);
+
+/*************************************************************************************************************/
+    typedef struct __config_loader_flags {
         u_int32_t DynInst : 1;
         u_int32_t Init : 1;
-    };
+    } config_loader_flags_t;
     
-    typedef union __loader_unFlags {
+    typedef union __config_loader_union_flags {
         u_int32_t ui32;
-        struct __loader_flags s_flags;
-    } cfgflags_t;
-
-    struct __loader_errors {
+        config_loader_flags_t s_flags;
+    } config_loader_flags_un;
+/*  */
+    struct __config_loader_errors {
         // массив для обработки ошибок
         char Buff[2048];
         // номер ошибки
         int error;
-        cfgflags_t unFl;
+        config_loader_flags_un unFl;
     };
-    
-    struct __loader_buffers {
+    /* Инициализатор */
+    extern struct __config_loader_errors __config_loader_init_struct_errors;
+/*  */    
+    struct __config_loader_buffers {
         // входной массив
         unsigned char *In;
         // рабочий массив
@@ -54,9 +65,19 @@
         size_t Pi;
         // позиция в рабочем массиве
         size_t Pw;
+        // Деструктор
+        void (*destruct)(struct __config_loader *Instance);
     };
+    extern struct __config_loader_buffers __config_loader_init_struct_buffers;
+    int config_loader_init_buffers(struct __config_loader *CL, const char *FileName);
+    void config_loader_destruct_buffers(struct __config_loader *Inst);
+/*  */
+    extern const char __config_loader_default_quotes[];
+    extern const char __config_loader_default_lcomm[];
+    extern const char __config_loader_default_nonspace[];
+    extern const char __config_loader_default_group[];
 
-    struct __loader_charset {
+    struct __config_loader_charset {
         // нужные символы - не пробелы(\t\n)
         const char NotSpace[8];
         // строковые коментарии
@@ -68,9 +89,10 @@
         // наибольший коментарий
         const char gC;
     };
-
+    /* Конструктор */
+    int config_loader_construct_charset(struct __config_loader_charset *CS);
+/*  */
     struct __config_loader {
-    /* публичные методы */
         // Загружает и отчищает файл от коментариев, разбивает на строки, удаляет пустые
         int (*load)(struct __config_loader *Inst, const char *FileName);
         // устанавливает типы строчных комментариев
@@ -81,52 +103,52 @@
         int (*isInit)(struct __config_loader *I);
     /* деструктор */
         void (*destruct)(struct __config_loader *I);
-
     /* Атрибуты, или поля, или как там ещё =D */
-        struct __loader_buffers Buffers;
-        struct __loader_charset Charset;
-        struct __loader_errors Errors;
+        // Массивы
+        struct __config_loader_buffers Buffers;
+        // Символы
+        struct __config_loader_charset Charset;
+        // Ошибки и статы
+        struct __config_loader_errors Errors;
+        // Выходная структура
+        struct __config_loader_var_groups Config;
     };
-    // конструктор класса
-    struct __config_loader* loader_construct(void* ptr);
-    
+    /* конструктор класса */
+    struct __config_loader* config_loader_construct(void* ptr);
+    /* Деструктор */
+    void config_loader_destruct(struct __config_loader *Inst);
     
 /* защищённые функции */
-    //#ifdef __config_loader_c__
+    #ifdef __config_loader_c__
     /* деструкторы */
-        void loader_cleanup_instance(struct __config_loader *Ptr);
-        void loader_cleanup_buffers(struct __config_loader *Inst);
-        void loader_cleanup_groups(struct Config_Groups *Gps);
-        void loader_cleanup_group(cfggrp_t *Grp);
+        
     /* функции(методы) */
-        int loader_set_scomments(struct __config_loader *I, const char *Keys);
-        // инициализирует набор символов
-        int loader_init_charset(struct __loader_charset *CS);
-        int loader_sort_charset(struct __loader_charset *CS);
+        //
+        /* TODO */
+        //int config_loader_count_entries(struct __config_loader *CL);
+        /* ~ */
+        int config_loader_set_scomments(struct __config_loader *I, const char *Keys);
+        int config_loader_sort_charset(struct __config_loader_charset *CS);
         // 1 - если успешно загружен, 0 - в случае ошибки
-        int loader_isInit(struct __config_loader *Inst);
+        int config_loader_isInit(struct __config_loader *Inst);
         // инициализирует буфферы и считывает в них файл
-        int loader_init_buffers(struct __config_loader *CL, const char *FileName);
-        int loader_process_file(struct __config_loader *CL, const char *FileName);
-        int loader_clean_file(struct __config_loader *I);
-        // вычисляет конец "Си" комментария
-        int loader_endof_c_comment(struct __loader_buffers *I);
-        // вычисляет конец строчного коментария
-        int loader_endof_s_comment(struct __loader_buffers *I);
+        int config_loader_init_buffers(struct __config_loader *CL, const char *FileName);
+        int config_loader_process_file(struct __config_loader *CL, const char *FileName);
+        int config_loader_clean_file(struct __config_loader *I);
         // удаляет пустые строки
-        int loader_trimm_emty_strings(struct __loader_buffers *I);
+        int config_loader_delete_emty_strings(struct __config_loader_buffers *I);
         // меняет буфферы местами
-        void loader_swap_buffers(struct __loader_buffers *B);
+        void config_loader_swap_buffers(struct __config_loader_buffers *B);
         // выводит ошибки в терминал
-        void loader_perror(struct __config_loader *I, const char * What, int Error);
+        void config_loader_perror(struct __config_loader *I, const char * What, int Error);
         // меняет символы местами
-        int loader_swap_c(char *c1, char *c2);
+        int config_loader_swap_c(char *c1, char *c2);
         // сортирует строку по возрастанию
-        int loader_strsort_az(char *a);
+        int config_loader_strsort_az(char *a);
         // сортирует строку по убыванию
-        int loader_strsort_za(char *a);
+        int config_loader_strsort_za(char *a);
         // разворачивает строку
-        int loader_strinverse(char *a);
-    //#endif //__config_loader_c__
+        int config_loader_strinverse(char *a);
+    #endif //__config_loader_c__
 
 #endif // __config_loader_h__
