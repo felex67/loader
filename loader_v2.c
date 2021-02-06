@@ -11,7 +11,7 @@
 #include "loader_v2.h"
 
 #ifndef nullptr
-    #define nullptr (0)
+    #define nullptr ((void*)(0))
 #endif // nullptr
 
 /*********************************** class Config ***********************************/
@@ -26,9 +26,9 @@
         .Vars = nullptr
     };
     struct __config_loader_var_groups __config_loader_init_struct_groups = {
-        .count = 0,
+        .destruct = config_loader_destruct_groups,
+        .GrpCnt = 0,
         .Groups = nullptr,
-        .destruct = config_loader_destruct_groups
     };
     /* деструктор */
     void config_loader_destruct_groups(struct __config_loader_var_groups *Gps) {
@@ -348,25 +348,14 @@
         return -1;
     }
 
-/* Рабочая область */
-    struct __config_loader_pointer_counter {
-        struct __config_loader *Inst;
-        size_t Groups;
-        size_t Vars;
-        unsigned char *Buff;
+    /* Счётчик групп и переменных */
+    struct __config_loader_pointer_counter config_loader_pointer_counter = {
+        .TotalVars = 0,
+        .calc = INVALID_FUNCTION
     };
-
-    int config_loader_count_multi1(struct __config_loader_pointer_counter *);
-    int config_loader_count_multi2(struct __config_loader_pointer_counter *);
-    size_t config_loader_count_simple(const unsigned char *, const unsigned char);
-
+    
     int config_loader_build_groups(struct __config_loader *Inst) {
-        struct __config_loader_pointer_counter Ctr = {
-            .Inst = Inst,
-            .Groups = 0,
-            .Vars = 0,
-            .Buff = Inst->Buffers.In
-        };
+        struct __config_loader_pointer_counter *Ctr = &(Inst->Config.Counter);
         unsigned char * in = Inst->Buffers.In;
         size_t *pi = &(Inst->Buffers.Pi);
         struct __config_loader_var_groups *Groups = &(Inst->Config);
@@ -375,11 +364,11 @@
         int tabs = 0;
         int same = 0;
         errno = 0;
-        // анализируем первую строку
-        // если в ней присутсвует один знак равно, значит это просто набор переменных
-        // если нет ни того ни другого, то скорее всего это имя группы, причём в квадратных скобках
-        // а если знаков равно много, да ещё и с табуляцией, то, тогда каждая строка - это отдельная группа
-        // в этом мы убедимся при дальнейшем разборе, а может и не станем заморачиваться =)
+        /**
+         * анализируем первую строку если в ней присутсвует один знак равно, значит это просто набор переменных
+         * если нет ни того ни другого, то скорее всего это имя группы, причём в квадратных скобках
+         * а если знаков равно много, да ещё и с табуляцией, то, тогда каждая строка - это отдельная группа
+         * в этом мы убедимся при дальнейшем разборе, а может и не станем заморачиваться =) */
         for (int i = 0; '\000' != in[i]; i++) {
             if ('=' < in[i]) {}
             // знак равно
@@ -400,7 +389,7 @@
             Ctr.Vars += config_loader_count_simple(in, '\n');
             Ctr.Groups = 1;
         }
-        else if (tabs <= (equals + 1)) {
+        else if (tabs = (equals + 1)) {
             // каждая строка - отдельная группа, с кулючём начала и конца
             for (int i = 0; '\t' != in[i]; i++) {
                 if (in[i] != SecStr[i]) { errno = EILSEQ; }
@@ -423,27 +412,11 @@
         return n;
     }
     // считаем количество переменных в именнованных гркппах
-    int config_loader_count_multi1(struct __config_loader_pointer_counter *Cntr) {
-        unsigned char *in = Cntr->Buff;
-        size_t *grps = &(Cntr->Groups) + 1;
-        size_t *vars = &(Cntr->Vars);
-        size_t pi = 1;
-        char *Start = (char *)Cntr->Buff;
-        unsigned char gprstart[] = { '\n', in[0], 0x00 };
-        for (pi = 1; 0 != in[pi]; pi++) {
-            if ('\n' < in[pi]) {}
-            else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++(*vars); }
-            else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++(*grps); }
-        }
-        return 0;
-    }
-    int config_loader_count_multi2(struct __config_loader_pointer_counter *V) { return -1; }
-    int count_multi1(size_t *Grps, size_t *Vars, const char *Buff) {
+    int config_loader_count_multi1(size_t *Grps, size_t *Vars, const unsigned char *Buff) {
         unsigned char *in = (unsigned char *)Buff;
         size_t *grps = Grps;
         size_t *vars = Vars;
         size_t pi = 1;
-        const char *Start = Buff;
         unsigned char gprstart[] = { '\n', in[0], 0x00 };
         for (pi = 1; 0 != in[pi]; pi++) {
             if ('\n' < in[pi]) {}
@@ -453,6 +426,22 @@
         ++(*grps);
         return 0;
     }
+    // считаем количество переменных в неименнованных гркппах
+    int config_loader_count_multi2(size_t *Grps, size_t *Vars, const unsigned char *Buff) {
+        unsigned char *in = (unsigned char *)Buff;
+        *Grps = 1;
+        *Vars = 0;
+        size_t pi = 0;
+        const char *Start = Buff;
+        for (pi = 0; 0 != in[pi]; pi++) {
+            if ('\n' < in[pi]) {}
+            else if ('\n' == in[pi]) { ++(*Grps); }
+            else if ('\t' == in[pi]) { ++(*Vars); }
+        }
+        *Vars -= *Grps;
+        return 0;
+    }
+
 int main (const int argc, const char *argv[]) {
     struct __config_loader *CL = config_loader_construct(nullptr);
     size_t Grps = 0, Vars = 0;
