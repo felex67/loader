@@ -16,7 +16,7 @@
         if (nullptr == Inst) { Inst = (ConfigParser*)malloc(sizeof(ConfigParser)); }
         if (nullptr != Inst) {
             config_parser_preinit_instance(Inst);
-            if (nullptr == Ptr) (*(struct __config_parser_flags*)&Inst->__private_flags).DynInst = 1;
+            if (nullptr == Ptr) config_parser_set_flag(Inst, CP_FLAG_DYNINS);
         }
         return Inst;
     }
