@@ -420,12 +420,6 @@
             Groups->GrpCnt = 1;
             buildtype = 0;
         }
-        /** На данный момент не поддерживается
-         *  else if (tabs = (equals + 1)) {
-            // каждая строка - отдельная группа, с кулючём начала и конца
-            Inst->Errors.error = config_loader_count_multi2(&(Groups->GrpCnt), &(Groups->VarCnt), in);
-            buildtype = 2;
-        } */
         else {
             // даже и предположений никаких нет...
             Inst->Errors.error = EILSEQ;
