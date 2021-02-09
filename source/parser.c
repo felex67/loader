@@ -1,10 +1,12 @@
 #include <sys/types.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define __config_parser_c__ 1
 
-#include "parser.h"
+#include "headers/parser.h"
 
 #ifndef nullptr
     #define nullptr (0)
@@ -27,7 +29,9 @@
     /** Конструктор интерпритатора */
     ConfigParser* config_parser_construct(ConfigParser *Ptr) {
         ConfigParser (*Inst) = Ptr;
-        if (nullptr == Inst) { Inst = (ConfigParser*)malloc(sizeof(ConfigParser)); }
+        if (nullptr == Inst) {
+            Inst = (ConfigParser*)malloc(sizeof(ConfigParser));
+        }
         if (nullptr != Inst) {
             if (!config_parser_preinit_instance(Inst)) {
                 if (nullptr == Ptr) config_parser_set_flag(Inst, CP_FLAG_DYNINS);
@@ -45,7 +49,6 @@
             *((void*(*))&Inst->destruct) = (void*)config_parser_destruct;
             *((void*(*))&Inst->reset) = (void*)config_parser_reset;
             *((int*(*))&Inst->init) = (int*)config_parser_init_source;
-            *((int**)&Inst->set_counting_method) = (int*)config_parser_set_counting_method;
             *((int**)&Inst->set_building_method) = (int*)config_parser_set_building_method;
 
             *((int**)&Inst->parse_i) = (int*)config_parser_parse_i;
@@ -73,11 +76,15 @@
             
             return 0;
         }
+        else {
+            errno = EINVAL;
+        }
         return -1;
     }
     /** */
     int config_parser_construct_var(const parser_variable_t *Var, const char *N, const char *V) {
         if (Var) {
+            errno = EXIT_SUCCESS;
             *(const char**)&Var->Var = N;
             *(const char**)&Var->Val = V;
             return 0;
@@ -88,11 +95,13 @@
     /** */
     int config_parser_construct_grp(const parser_group_t *Grp, const char *N, const size_t Cnt, const parser_variable_t *Vars) {
         if (Grp) {
+            errno = EXIT_SUCCESS;
             *((const char**)&Grp->Name) = N;
             *((size_t*)&Grp->VarCnt) = Cnt;
             *((const parser_variable_t**)&Grp->Vars) = Vars;
             return 0;
         }
+        errno = EINVAL;
         return -1;
     }
     /** Инициализатор исходного массива */
@@ -114,39 +123,56 @@
                 }
             }
         }
+        else {
+            errno = EINVAL;
+        }
         return result;
     }
     /** Инициализатор-конструктор выходного массива */
     int config_parser_init_map(ConfigParser *Inst) {
+        size_t gbytes = 0, vbytes = 0;
+        unsigned char *barray = nullptr;
+        parser_group_t *pGrps = nullptr;
+        parser_variable_t *pVars = nullptr;
+        int result = -1;
+
         if ((nullptr != Inst) && (Inst->__private_flags.SRCINT)) {
-            size_t gbytes = (sizeof(parser_group_t) * Inst->__private_gc);
-            size_t vbytes = (sizeof(parser_variable_t) * Inst->__private_vc);
-            unsigned char *barray = (unsigned char*)malloc(gbytes + vbytes);
-            if (nullptr != barray) {
-                parser_group_t *pGrps = (parser_group_t*)barray;
-                parser_variable_t *pVars = *((parser_variable_t**)&Inst->__private_vars) = (parser_variable_t*)(barray + gbytes);
+            gbytes = (sizeof(parser_group_t) * Inst->__private_gc);
+            vbytes = (sizeof(parser_variable_t) * Inst->__private_vc);
+            barray = (unsigned char*)malloc(gbytes + vbytes);
+            if ((0 != gbytes) && (0 != vbytes) && (nullptr != barray)) {
+                pGrps = (parser_group_t*)barray;
+                pVars = *((parser_variable_t**)&Inst->__private_vars) = (parser_variable_t*)(barray + gbytes);
                 *((void**)&(Inst->__private_map)) = (void*)barray;
                 for (size_t i = 0; i < Inst->__private_gc; i++) {
-                    config_parser_construct_grp(pGrps + i, nullptr, 0, nullptr);
+                    if (-1 != (result = config_parser_construct_grp(pGrps + i, nullptr, 0, nullptr)));
+                    else { break; }
                 }
-                config_parser_construct_grp(pGrps, nullptr, 0, pVars);
-                for (size_t i = 0; i < Inst->__private_vc; i++) {
-                    config_parser_construct_var(pVars + i, nullptr, nullptr);
+                if (!result && (-1 != (result = config_parser_construct_grp(pGrps, nullptr, 0, pVars)))) {
+                    for (size_t i = 0; i < Inst->__private_vc; i++) {
+                        if (-1 != (result = config_parser_construct_var(pVars + i, nullptr, nullptr)));
+                        else { break; }
+                    }
                 }
-                config_parser_set_flag(Inst, CP_FLAG_MAPINT);
-                return 0;
+                if (!result) {
+                    config_parser_set_flag(Inst, CP_FLAG_MAPINT);
+                    return 0;
+                }
             }
         }
+        else { errno = EINVAL; }
         return -1;
     }
     /** Возвращает интерпритатор в исходное состояние */
     int config_parser_reset(ConfigParser *Inst) {
         if (nullptr != Inst) {
+            errno = EXIT_SUCCESS;
             u_int32_t flags = Inst->__private_flags.DYNINS;
             config_parser_preinit_instance(Inst);
-            config_parser_set_flag(Inst, (enum __config_parser_flags_e)flags);
+            config_parser_set_flag(Inst, flags);
             return 0;
         }
+        else { errno = EINVAL; }
         return -1;
     }
 
@@ -185,6 +211,7 @@
         char Date[48];
         time_t now;
         int result = -1;
+
         if ((nullptr != Inst) && (Inst->__private_flags.SRCINT)) {
             if (!Inst->__private_flags.BTPUSR) {
                 result = config_parser_count_default(Inst);
@@ -193,6 +220,7 @@
                 result = Inst->__private_counter(Inst->__private_src, Inst->__private_srcsz, (size_t*)&(Inst->__private_gc), (size_t*)&(Inst->__private_vc));
             }
         }
+        else { errno = EINVAL; }
         return result;
     }
     /** */
@@ -200,8 +228,6 @@
         size_t pi = 0;
         const unsigned char *in = Inst->__private_src;
         const size_t SrcSz = Inst->__private_srcsz;
-        size_t *Grps = (size_t*)&(Inst->__private_gc);
-        size_t *Vars = (size_t*)&(Inst->__private_vc);
         int equals = 0;
         int tabs = 0;
         int same = 0;
@@ -247,29 +273,33 @@
                 , Inst->__private_vc
             );
         }
+        else { errno = EINVAL; }
         return result;
     }
     int config_parser_scan_var(const parser_variable_t *pv, unsigned char *s, size_t *p) {
         int r = -1;
-        // need for asign name
-        size_t np = *p;
-        size_t l = 0;
-        while (
-            (('a' <= s[*p]) && ('z' >= s[*p]))
-            || (('A' <= s[*p]) && ('Z' >= s[*p]))
-            || (('0' <= s[*p]) && ('9' >= s[*p]))
-            || ('_' == s[*p])
-        ) {
-            ++l;
-            ++(*p);
+        if (pv && s && p) {
+            // need for asign name
+            size_t np = *p;
+            size_t l = 0;
+            while (
+                (('a' <= s[*p]) && ('z' >= s[*p]))
+                || (('A' <= s[*p]) && ('Z' >= s[*p]))
+                || (('0' <= s[*p]) && ('9' >= s[*p]))
+                || ('_' == s[*p])
+            ) {
+                ++l;
+                ++(*p);
+            }
+            if (((0 < l) && ('=' == s[*p]))) {
+                // here
+                *((unsigned char**)&pv->Var) = (s + np);
+                s[(*p)++] = 0;
+                r = 0;
+            }
+            else { errno = EILSEQ; }
         }
-        if (((0 < l) && ('=' == s[*p]))) {
-            // here
-            *((unsigned char**)&pv->Var) = (s + np);
-            s[(*p)++] = 0;
-            r = 0;
-        }
-        else { errno = EILSEQ; }
+        else { errno = EINVAL; }
         return r;
     }
     int config_parser_scan_val(const parser_variable_t *v, unsigned char *s, size_t *p) {
@@ -279,54 +309,62 @@
         size_t vp = *p;
         int r = 0;
         char Q = 0;
-        t = strchr(Qts, (char)s[*p]);
-        if (nullptr != t) {
-            Q = *t;
-            s[(*p)++] = 0;
-            *((unsigned char**)&v->Val) = (s + vp + 1);
-            while ((0 != s[*p]) && ((Q != s[*p]) || ('\\' == s[(*p) - 1]))) { ++(*p); }
-            if (Q == s[(*p)]) s[(*p)++] = 0;
-        }
-        else {
-            for ( ; (0 != s[*p]) && ('\n' != s[*p]) && ('\t' != s[*p]); (*p)++) {
-                if (('A' <= s[*p]) && ('E' >= s[*p]) || ('X' == s[*p]));
-                else if (('a' <= s[*p]) && ('e' >= s[*p]) || ('x' == s[*p]));
-                else if (('0' <= s[*p]) && ('9' >= s[*p]));
-                else if (
-                    ('.' == s[*p]) || ('+' == s[*p])
-                    || ('-' == s[*p]) || ('*' == s[*p])
-                );
-                else {
-                    errno = EILSEQ;
-                    r = -1;
-                    break;
+        if (v && s && p) {
+            t = strchr(Qts, (char)s[*p]);
+            if (nullptr != t) {
+                Q = *t;
+                s[(*p)++] = 0;
+                *((unsigned char**)&v->Val) = (s + vp + 1);
+                while ((0 != s[*p]) && ((Q != s[*p]) || ('\\' == s[(*p) - 1]))) { ++(*p); }
+                if (Q == s[(*p)]) s[(*p)++] = 0;
+            }
+            else {
+                for ( ; (0 != s[*p]) && ('\n' != s[*p]) && ('\t' != s[*p]); (*p)++) {
+                    if (('A' <= s[*p]) && ('E' >= s[*p]) || ('X' == s[*p]));
+                    else if (('a' <= s[*p]) && ('e' >= s[*p]) || ('x' == s[*p]));
+                    else if (('0' <= s[*p]) && ('9' >= s[*p]));
+                    else if (
+                        ('.' == s[*p]) || ('+' == s[*p])
+                        || ('-' == s[*p]) || ('*' == s[*p])
+                    );
+                    else {
+                        errno = EILSEQ;
+                        r = -1;
+                        break;
+                    }
+                }
+                if (!r) {
+                    *((unsigned char**)&v->Val) = (s + vp);
+                    s[(*p)++] = 0;
                 }
             }
-            if (!r) {
-                *((unsigned char**)&v->Val) = (s + vp);
-                s[(*p)++] = 0;
-            }
         }
+        else { errno = EINVAL; }
         return r;
     }
     int config_parser_scan_grp(const parser_group_t *g, unsigned char *s, size_t *p) {
         int r = -1;
-        if (s[*p] == '[') {
-            s[(*p)++] = 0;
-            size_t np = *p;
-            while ((0 != s[*p]) &&((('a' <= s[*p]) && ('z' >= s[*p]))
-                || (('A' <= s[*p]) && ('Z' >= s[*p]))
-                || (('0' <= s[*p]) && ('9' >= s[*p]))
-                || ('_' == s[*p]))) {
-                ++(*p);
-            }
-            if (']' == s[*p]) {
-                *((unsigned char**)&g->Name) = s + np;
+        size_t np = 0;
+        if (g && s && p) {
+            if (s[*p] == '[') {
                 s[(*p)++] = 0;
-                r = 0;
+                np = *p;
+                while ((0 != s[*p]) &&((('a' <= s[*p]) && ('z' >= s[*p]))
+                    || (('A' <= s[*p]) && ('Z' >= s[*p]))
+                    || (('0' <= s[*p]) && ('9' >= s[*p]))
+                    || ('_' == s[*p])))
+                {
+                    ++(*p);
+                }
+                if (']' == s[*p]) {
+                    *((unsigned char**)&g->Name) = s + np;
+                    s[(*p)++] = 0;
+                    r = 0;
+                }
             }
+            if (0 != r) errno = EILSEQ;
         }
-        if (0 != r) errno = EILSEQ;
+        else { errno = EINVAL; }
         return r;
     }
     /** Считаем количество переменных в файле формата:
@@ -336,15 +374,15 @@
      * ... */
     int config_parser_count_default0(const unsigned char *s, const size_t sz, size_t *g, size_t *v) {
         if (s && sz && g && v) {
+            errno = EXIT_SUCCESS;
             for (size_t i = 0; i < sz; i++) {
                 if ('\n' == s[i]) { ++(*v); }
             }
             if ('\n' != s[sz - 1]) ++(*v);
             (*g) = 1;
-            errno = EXIT_SUCCESS;
             return 0;
         }
-        errno = (sz ? ENOLINK : EINVAL);
+        errno = EINVAL;
         return -1;
     }
     /** Считаем количество переменных в файле формата:
@@ -353,19 +391,27 @@
      * Var2=Value
      * ... */
     int config_parser_count_default1(const unsigned char *Buff, const size_t SrcSz, size_t *Grps, size_t *Vars) {
-        unsigned char *in = (unsigned char *)Buff;
-        size_t *grps = Grps;
-        size_t *vars = Vars;
+        unsigned char *in;
+        size_t *grps;
+        size_t *vars;
         size_t pi = 1;
         unsigned char gprstart[] = { '\n', in[0], 0x00 };
-        ++(*grps);
-        for (pi = 1; 0 != in[pi]; pi++) {
-            if ('\n' < in[pi]) {}
-            else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++pi; ++(*vars); }
-            else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++pi; ++(*grps); }
+        if (Buff && SrcSz && Grps && Vars) {
+            in = (unsigned char *)Buff;
+            grps = Grps;
+            vars = Vars;
+
+            ++(*grps);
+            
+            for (pi = 1; 0 != in[pi]; pi++) {
+                if ('\n' < in[pi]) {}
+                else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++pi; ++(*vars); }
+                else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++pi; ++(*grps); }
+            }
+            return 0;
         }
-        
-        return 0;
+        errno = EINVAL;
+        return -1;
     }
     /** Создаёт структуру из конфига вида:
      * Var1=Value
@@ -373,19 +419,23 @@
      * Var3=Value
      * ... */
     int config_parser_build_default0(parser_group_t *m, unsigned char *s, const size_t ssz, const size_t gc, const size_t vc) {
-        const parser_variable_t *v = m->Vars;
+        const parser_variable_t *v;
         size_t p = 0;
-        int r = 0;
-        *((size_t*)&(m->VarCnt)) = vc;
-        // поехали!!!
-        for (size_t i = 0; i < vc; i++) {
-            if (!(r = config_parser_scan_var(v + i, s, &p))) {
-                if (!(r = config_parser_scan_val(v + i, s, &p))) {}
+        int r = -1;
+        if (m && s && ssz && gc && vc) {
+            r = 0;
+            v = m->Vars;
+            *((size_t*)&(m->VarCnt)) = vc;
+            // поехали!!!
+            for (size_t i = 0; i < vc; i++) {
+                if (-1 != (r = config_parser_scan_var(v + i, s, &p))) {
+                    if (-1 != (r = config_parser_scan_val(v + i, s, &p)));
+                    else { break; }
+                    if ('\n' == s[p]) s[p++] = 0;
+                }
             }
-            if (!r);
-            else { return -1; }
-            if ('\n' == s[p]) s[p++] = 0;
         }
+        else { errno = EINVAL; }
         return r;
     }
     /** Создаёт структуру из конфига вида:
@@ -439,27 +489,19 @@
         }
     }
 
-    int config_parser_set_counting_method (
-        ConfigParser *Inst,
-        int (*callback)(const unsigned char *Src, const size_t SrcSz, size_t *GrpCnt, size_t *VarCnt)
-    ) {
-        if ((nullptr != Inst) && (nullptr != callback)) {
-            *((int**)&(Inst->__private_builder)) = (int*)callback;
-            config_parser_set_flag(Inst, CP_FLAG_BTPUSR);
-            return 0;
-        }
-        return -1;
-    }
     /** Устанавливает метод подсчёта групп и переменных */
     int config_parser_set_building_method (
         ConfigParser *Inst,
-        int (*callback)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
+        int (*counter)(const unsigned char *Src, const size_t SrcSz, size_t *GrpCnt, size_t *VarCnt),
+        int (*builder)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
     ) {
-        if ((nullptr != Inst) && (nullptr != callback)) {
-            *((int**)&(Inst->__private_counter)) = (int*)callback;
+        if ((nullptr != Inst) && (nullptr != counter) && (nullptr != builder)) {
+            *((int**)&(Inst->__private_counter)) = (int*)counter;
+            *((int**)&(Inst->__private_builder)) = (int*)builder;
             config_parser_set_flag(Inst, CP_FLAG_BTPUSR);
             return 0;
         }
+        errno = EINVAL;
         return -1;
     }
 

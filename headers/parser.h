@@ -44,15 +44,11 @@
         void (*const reset)(struct __config_parser *Inst);
         /** Инициализатор исходного массива */
         int (*const init)(struct __config_parser *Inst, const char *Src);
-        /** Устанавливает метод подсчёта */
-        int (*const set_counting_method)(
-            struct __config_parser *Inst,
-            int (*callback)(const unsigned char *Src, const size_t SrcSz, size_t *TotalGrps, size_t *TotalVars)
-        );
         /** Устанавливает метод построения */
         int (*const set_building_method)(
             struct __config_parser *Inst,
-            int (*callback)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
+            int (*counter)(const unsigned char *Src, const size_t SrcSz, size_t *TotalGrps, size_t *TotalVars),
+            int (*builder)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
         );
         /** Сканирует значение как целое со знаком 4 байта и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
@@ -166,10 +162,12 @@
     void config_parser_set_flag(ConfigParser *Inst, unsigned int flags);
     /** Снимает флаги */
     void config_parser_unset_flag(ConfigParser *Inst, unsigned int flags);
-    /** Устанавливает метод построения карты */
-    int config_parser_set_counting_method(ConfigParser *Inst, int (*callback)(const unsigned char *Src, const size_t SrcSz, size_t *GrpCnt, size_t *VarCnt));
-    /** Устанавливает метод подсчёта групп и переменных */
-    int config_parser_set_building_method(ConfigParser *Inst, int (*callback)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt));
+    /** Устанавливает метод подсчёта и построения групп и переменных */
+    int config_parser_set_building_method(
+        ConfigParser *Inst,
+        int (*counter)(const unsigned char *Src, const size_t SrcSz, size_t *GrpCnt, size_t *VarCnt),
+        int (*builder)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
+    );
 
 /** Основные методы */
 

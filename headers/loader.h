@@ -3,8 +3,6 @@
 
 #include <sys/types.h>
 
-
-
     struct __config_loader {
         char eBuff[2048];
         size_t wLen;
