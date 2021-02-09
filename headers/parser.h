@@ -2,32 +2,35 @@
 #define  __config_parser_h__ 1
 
 #include <sys/types.h>
-
     struct __config_parser_flags {
-        u_int32_t BldType : 2;
-        u_int32_t CntType : 2;
-        u_int32_t DynInst : 1;
-        u_int32_t SrcInit : 1;
-        u_int32_t MapInit : 1;
-        u_int32_t MapBldd : 1;
-        u_int32_t PreInit : 1;
+        u_int32_t BTPDT1 : 1;
+        u_int32_t BTPUSR : 1;
+        u_int32_t DYNINS : 1;
+        u_int32_t SRCINT : 1;
+        u_int32_t MAPINT : 1;
+        u_int32_t MAPBLD : 1;
+        u_int32_t PREINT : 1;
+    };
+    union __config_parser_flag_set {
+        struct __config_parser_flags s;
+        u_int32_t ui;
     };
     /* Переменная в строковом виде */
     typedef struct __config_parser_var {
         // Переменная
-        char *Var;
+        const char *const Var;
         // Значение
-        char *Val;
+        const char *const Val;
     } parser_variable_t;
 
     /** Группа строковых переменных */
     typedef struct __config_parser_var_group {
         // Количество переменных
-        size_t VarCnt;
+        const size_t VarCnt;
         // имя группы
-        char *Name;
+        const char * const Name;
         // Массив переменных
-        parser_variable_t *Vars;
+        const parser_variable_t *const Vars;
     } parser_group_t;
 
 /** Интерпритатор конфигурационных файлов */
@@ -51,31 +54,27 @@
             struct __config_parser *Inst,
             int (*callback)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt)
         );
-
-        /** Находит переменную Name в группе GrpName и возвращает указатель на неё
-         * если переменная не найдена вернётся ((parser_variable_t*)0) */
-        parser_variable_t *(*const get_var)(const struct __config_parser *Inst, const char *Name, const char *GrpName);
         /** Сканирует значение как целое со знаком 4 байта и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_i)(int32_t *Val, char *Var);
+        int (*const parse_i)(int32_t *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** Сканирует значение как целое без знака 4 байта и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_ui)(u_int32_t *Val, char *Var);
+        int (*const parse_ui)(u_int32_t *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** Сканирует значение как целое со знаком 8 байт и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_l)(int64_t *Val, char *Var);
+        int (*const parse_l)(int64_t *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** Сканирует значение как целое без знака 8 байт и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_ul)(u_int64_t *Val, char *Var);
+        int (*const parse_ul)(u_int64_t *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** Сканирует значение как вещественное 4 байта и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_f)(float *Val, char *Var);
+        int (*const parse_f)(float *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** Сканирует значение как вещественное 8 байт и записывает в Val
          * в случае неудачи возвращает -1, а поле остаётся нетронутым */
-        int (*const parse_d)(double *Val, char *Var);
+        int (*const parse_d)(double *Val, const struct __config_parser *Inst, const char *VarName, const char *GrpName);
         /** В случае успеха возвращает указатель на строку значения переменной,
          * иначе - возвращается нулевой указатель ((char*)0)!!! */
-        const char *(*const parse_str)(char *Var);
+        const char *(*const parse_str)(const struct __config_parser *Inst, const char *VarName, const char *GrpName);
 /** private: */
         /** Расчитывает количество групп и переменных:
          * Если не установлен пользовательсий метод,
@@ -88,9 +87,9 @@
         /** Инициализатор-конструктор выходного массива */
         int (*const __private_init_map)(struct __config_parser *Inst);
         /** Переменная для хранения метода подсчёта групп и переменных */
-        int (*const __private_counter)(struct __config_parser *Inst);
+        int (*const __private_counter)(const unsigned char *Src, const size_t SrcSize, size_t *Grps, size_t *Vars);
         /** Переменная для хранения метода подсчёта групп и переменных */
-        int (*const __private_builder)(struct __config_parser *Inst);
+        int (*const __private_builder)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt);
 /** public: */
         // Найдено групп
         const size_t __private_gc;
@@ -99,7 +98,7 @@
         // Указатель на массив групп
         const parser_group_t *const __private_map;
         // Указатель на массив переменных
-        const parser_group_t *const __private_vars;
+        const parser_variable_t *const __private_vars;
 
         // Рабочий массив
         const unsigned char *const __private_src;
@@ -117,13 +116,13 @@
 #ifdef __config_parser_c__
 /** Флаги состояния */
     enum __config_parser_flags_e {
-        CP_FLAG_BTPD0  = 0b0001, CP_FLAG_BTPD1  = 0b0010, CP_FLAG_BTPUSR = 0b0011,
-        CP_FLAG_CTPD0  = 0b0100, CP_FLAG_CTPD1  = 0b1000, CP_FLAG_CTPUSR = 0b1100,
-        CP_FLAG_DYNINS = 0b10000,
-        CP_FLAG_SRCINT = 0b100000,
-        CP_FLAG_MAPINT = 0b1000000,
-        CP_FLAG_MAPBLD = 0b10000000,
-        CP_FLAG_PREINT = 0b100000000
+        CP_FLAG_BTPDT1 = 0b1,
+        CP_FLAG_BTPUSR = 0b10,
+        CP_FLAG_DYNINS = 0b100,
+        CP_FLAG_SRCINT = 0b1000,
+        CP_FLAG_MAPINT = 0b10000,
+        CP_FLAG_MAPBLD = 0b100000,
+        CP_FLAG_PREINT = 0b1000000
     };
 /** Инициализаторы и конструкторы */
 
@@ -139,7 +138,10 @@
     int config_parser_init_map(ConfigParser *Inst);
     /** Возвращает интерпритатор в исходное состояние */
     int config_parser_reset(ConfigParser *Inst);
-
+    /** */
+    int config_parser_construct_var(const parser_variable_t *Var, const char *N, const char *V);
+    /** */
+    int config_parser_construct_grp(const parser_group_t *Grp, const char *N, const size_t Cnt, const parser_variable_t *Vars);
 /** Структуры-инициализаторы */
 
     // Инициализатор строковой переменной
@@ -161,9 +163,9 @@
 /** Установщики */
 
     /** Устанавливает флаги */
-    void config_parser_set_flag(ConfigParser *Inst, enum __config_parser_flags_e flags);
+    void config_parser_set_flag(ConfigParser *Inst, unsigned int flags);
     /** Снимает флаги */
-    void config_parser_unset_flag(ConfigParser *Inst, enum __config_parser_flags_e flags);
+    void config_parser_unset_flag(ConfigParser *Inst, unsigned int flags);
     /** Устанавливает метод построения карты */
     int config_parser_set_counting_method(ConfigParser *Inst, int (*callback)(const unsigned char *Src, const size_t SrcSz, size_t *GrpCnt, size_t *VarCnt));
     /** Устанавливает метод подсчёта групп и переменных */
@@ -186,13 +188,13 @@
      * 'Var2=Value'
      * 'Var3=Value'
      * ... */
-    int config_parser_count_default0(const unsigned char *Src, const size_t SrcSz, size_t *Grps, size_t *Vars, );
+    int config_parser_count_default0(const unsigned char *Src, const size_t SrcSz, size_t *Grps, size_t *Vars);
     /** Создаёт структуру из конфига вида:
      * Var1=Value
      * Var2=Value
      * Var3=Value
      * ... */
-    int config_parser_build_default0(ConfigParser *Inst);
+    int config_parser_build_default0(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt);
 
     /** Считает количество групп Grps и переменных Vars из строки Buff:
      * [Group]
@@ -205,11 +207,35 @@
      * Var1=Value
      * Var2=Value
      * ... */
-    int config_parser_build_default1(ConfigParser *Inst);
+    int config_parser_build_default1(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt);
     /** */
-    int config_parser_check_var(const unsigned char *Src);
-    int config_parser_check_val(const unsigned char *Src);
-    int config_parser_check_grp(const unsigned char *Src);
+    int config_parser_scan_var(const parser_variable_t *v, unsigned char *s, size_t *p);
+    int config_parser_scan_val(const parser_variable_t *v, unsigned char *s, size_t *p);
+    int config_parser_scan_grp(const parser_group_t *v, unsigned char *s, size_t *p);
+
+    /** Выполняет поиск переменой в массиве.
+     * Если переменная с таким именем не найдена, возвращается нулевой указатель: ((config_variable_t*)0) */
+    const parser_variable_t* config_parser_get_var(const ConfigParser *Inst, const char *Var, const char *Grp);
+    /** Сканирует значение как целое со знаком 4 байта и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_i(int *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    /** Сканирует значение как целое без знака 4 байта и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_ui(unsigned int *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    /** Сканирует значение как целое со знаком 8 байт и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_l(long *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    /** Сканирует значение как целое без знака 8 байта и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_ul(unsigned long *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    /** Сканирует значение как вещественное 4 байта и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_f(float *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    /** Сканирует значение как вещественное 8 байта и записывает в Val
+     * в случае неудачи возвращает -1, а поле остаётся нетронутым */
+    int config_parser_parse_d(double *Val, const ConfigParser *Inst, const char *VarName, const char *GrpName);
+    // Возвращает указатель на первый символ после ковычки
+    const char *config_parser_parse_str(const ConfigParser *Inst, const char *VarName, const char *GrpName);
 
 #endif // __config_parser_c__
 

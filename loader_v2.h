@@ -12,64 +12,6 @@
 
 #include <sys/types.h>
 
-/** Загрузчик конфигурационных файлов */
-struct __config_loader;
-
-/** class __config_loader_var_groups */
-#ifdef __config_loader_c__
-/** Структуры-инициализаторы */
-    // Инициализатор строковой переменной
-    extern struct __config_loader_var __config_loader_init_struct_var;
-    // Инициализатор группы строковых переменных
-    extern struct __config_loader_var_group __config_loader_init_struct_group;
-    // Инициализатор списка групп и перменных
-    extern struct __config_loader_var_groups __config_loader_init_struct_groups;
-
-/** Конструкторы */
-
-    /** Конструктор списка груп и переменных */
-    int config_loader_construct_var_groups(struct __config_loader *Inst);
-
-    /** Деструктор списка групп и переменных */
-    void config_loader_destruct_var_groups(struct __config_loader *Inst);
-
-    /** Считает количество символьных переменных в Buff разделённых между собой символом Sep:
-     * 'Var1=Value'
-     * 'Var2=Value'
-     * 'Var3=Value'
-     * ... */
-    size_t config_loader_count_simple(const unsigned char *Buff, const unsigned char C);
-    /** Считает количество групп Grps и переменных Vars из строки Buff:
-     * [Group]
-     * Var1=Value
-     * Var2=Value
-     * ... */
-    int config_loader_count_multi1(size_t *Grps, size_t *Vars, const unsigned char *Buff);
-    /** Считает количество групп Grps и переменных Vars из строки Buff:
-     * BEGIN Var1=Value ... VarN=Value END ... */
-    int config_loader_count_multi2(size_t *Grps, size_t *Vars, const unsigned char *Buff);
-    /** Создаёт структуру из конфига вида:
-     * Var1=Value
-     * Var2=Value
-     * Var3=Value
-     * ... */
-    int config_loader_var_groups_build0(struct __config_loader *Inst);
-    /** Создаёт структуру из конфига вида:
-     * [Group]
-     * Var1=Value
-     * Var2=Value
-     * ... */
-    int config_loader_var_groups_build1(struct __config_loader *Inst);
-    /** Создаёт структуру из конфига вида:
-     * BEGIN Var1=Value ... VarN=Value END
-     * BEGIN Var1=Value ... VarN=Value END
-     * ... 
-    int config_loader_var_groups_build2(struct __config_loader *Inst);*/
-
-/** Методы */
-
-#endif // __config_loader_c__
-
 /** class __config_loader_errors */
 
     /** Флаги состояния загрузчика */
