@@ -17,19 +17,13 @@
     /** Флаги состояния загрузчика */
     typedef struct __config_cleaner_flags {
         // Выделена динамическая память
-        int32_t DynInst : 1;
+        u_int32_t DYNINST : 1;
         // Массивы инициализированы
-        int32_t BuffInit : 1;
+        u_int32_t BUFINIT : 1;
         // Файл очищен
-        int32_t FileClear : 1;
+        u_int32_t FILECLR : 1;
     } config_cleaner_flags_t;
 
-    /** Объединение флагов состояния загрузчика и unsigned int32 */
-    typedef union __config_cleaner_union_flags {
-        int32_t ui32;
-        config_cleaner_flags_t s_flags;
-    } config_cleaner_flags_un;
-    
     /* Обработчик ошибок исполнения процесса загрузки */
     struct __config_cleaner_errors {
         // массив для обработки ошибок
@@ -37,7 +31,7 @@
         // номер ошибки
         int error;
         // Флаги состояния (union)
-        config_cleaner_flags_un unFl;
+        struct __config_cleaner_flags unFl;
     };
 
     /* Структура-инициализатор обработчика ошибок */
@@ -113,8 +107,9 @@
 
         /* Атрибуты, или поля, или как там ещё =D */
         // Структура массивов
-        bytebuffer_t __private_in;
-        bytebuffer_t __private_wrk;
+        bytebuffer_t *__private_in;
+        bytebuffer_t *__private_wrk;
+
         // Набор символов
         struct __config_cleaner_charset Charset;
         // Обработчик ошибок

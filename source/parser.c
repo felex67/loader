@@ -272,6 +272,9 @@
                 , Inst->__private_gc
                 , Inst->__private_vc
             );
+            if (!result) {
+                config_parser_set_flag(Inst, CP_FLAG_MAPBLD);
+            }
         }
         else { errno = EINVAL; }
         return result;
