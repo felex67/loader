@@ -2,35 +2,42 @@
 делал для своих нужд
 
 Разделён на 2 модуля:
-1. Загрузчик файла '__config_loader': очищает от комментариев и удаляет пустые строки
+1. Загрузчик файла '__config_cleaner': очищает от комментариев и удаляет пустые строки
 2. Интерпритатор '__config_parser': строит структуру Группы[Группа][Переменная].Значение(.Val)
 
-    struct __config_loader {
-        /** Методы */
-        void (*destruct)(struct __config_loader *I);
-        void (*reset)(struct __config_loader *I);
-        int (*load)(struct __config_loader *Inst, const char *FileName);
-        int (*set_string_comments)(struct __config_loader *I, const char* Keys);
-        void (*clear)(struct __config_loader *I);
-        int (*isInit)(struct __config_loader *I);
-        void (*perror)(struct __config_loader *Inst, const char *What);
+##############################################################################################
+#                                     1. ConfigCleaner                                       #
+##############################################################################################
 
-        /** Атрибуты(Поля) */
-        struct __config_loader_buffers Buffers;
-        struct __config_loader_charset Charset;
-        struct __config_loader_errors Errors;
-        const char *const pBuffer;
-        const size_t *Size;
-    };
+    typedef struct __config_cleaner {
+        void (*const destruct)();               /* Деструктор загрузчика */
+        void (*const reset)();                  /* Очищает буферы, устанавливает значения по умолчанию */
+        void (*const resetBuff)();              /* очищает только буферы */
+        int (*const load)();            /* Загружает и отчищает файл от коментариев, удаляет пустые строки */
+        int (*const set_string_comments)();     /* устанавливает типы строчных комментариев */
+        int (*const release)();                 /* Отпускает выходной массив */
+
+        const struct __config_cleaner_buffers __private_buffs;      /* Структура массивов */
+        const struct __config_cleaner_charset __private_char;       /* Набор символов */
+        const size_t __private_flags;       /* Флаги */
+    } ConfigCleaner;
+    
+    /** Конструктор класса */
+    ConfigCleaner* new_config_cleaner(ConfigCleaner *);
 
     Загрузчик распознаёт комментарии "/* в стиле Си */", двойную косую "//", шарп "#" и точку с запятой ";"
     Общепринятый формат ".cfg" допускает только строковые комментарии обозначенные символами '#' или ';',
     но для возможности использования загрузчика с другими форматами также удаляются и "Си" комментарии
 
 Создание загрузчика:
-    Создание объекта класса __config_loader производится следующим образом:
-        struct __config_loader *ConfigLoader = config_loader_construct(0);
-    В случае успеха возвращается указатель на объект, в противном - ((struct __config_loader *)0)
+    Создание объекта класса или его инициализация производится вызовом:
+        ConfigCleaner* Cleaner = new_config_cleaner(0);
+            или
+        new_config_cleaner(Cleaner);
+    Разница в том что в первом случае объект создаётся в динамической памяти,
+    а во втором - инициализируется статичный объект.
+    в случае успеха функция возвращает указатель на инициализированный объект,
+    в противном - ноль(NULL, nullptr)
 
 Завершение работы с загрузчтком:
     После завершения работы с загрузчиком необходимо воспользоваться деструктором:
@@ -42,5 +49,50 @@
 Загрузка файла:
     Производится вызовом ConfigLoader->load(ConfigLoader, "FileName").
     В случае удачи метод возвращает 0, в противном - -1
-    после успешной загрузки инициализируется указатель: const char *const __config_loader::Result,
-    а параметр: const size_t Size показывает размер результирующей строки.
+    в случае успешной зашрузки доступ к файлу можно получить методом
+        ConfigCleaner::release(ConfigCleaner *Inst, void **Tgt, size_t *TgtSize)
+
+##############################################################################################
+#                                      2. ConfigParser                                       #
+##############################################################################################
+
+    typedef struct __config_parser {
+    /** public: */
+        void (*const destruct)();                       /** Деструктор */
+        void (*const reset)();                          /** Очистка (полная) */
+        int (*const init)();                            /** основной рабочий метод */
+        int (*const set_building_method)();                     /** Устанавливает метод построения */
+        
+        int (*const parse_i)();
+        int (*const parse_ui)();
+        int (*const parse_l)();
+        int (*const parse_ul)();
+        int (*const parse_f)();
+        int (*const parse_d)();
+        const char *(*const parse_str)();
+
+    /** private: */
+        int (*const __private_count)();
+        int (*const __private_build)();
+        int (*const __private_init_map)();
+        int (*const __private_counter)();
+        int (*const __private_builder)();
+
+        const size_t __private_gc;                      /*  Найдено групп */
+        const size_t __private_vc;                      /* Найдено переменных */
+        const parser_group_t *const __private_map;      /*  Указатель на массив групп */
+        const parser_variable_t *const __private_vars;  /* Указатель на массив переменных */
+        const unsigned char *const __private_src;       /* Рабочий массив */
+        const size_t __private_srcsz;                   /* Размер рабочего массива */
+        const struct __config_parser_flags __private_flags;     /* Флаги состояния */
+        const int Error;                                /* Ошибки выполнения */
+    } ConfigParser;
+
+    Тут всё просто:
+    ...
+        ConfigParser *Parser = new_config_parser(0);
+        Parser->init(Parser, FileName);
+        double d;
+        Parser->parser_d(Parser, &d, VarName, VarGrp); // Если VarGrp = 0, то выполняется поиск только по массиву переменных
+        Parser->destruct(Parser);
+    ...

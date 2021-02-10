@@ -5,6 +5,7 @@
 typedef struct __byte_buffer {
     /** Уничтожает объект 'Inst', освобождает память */
     void (*const destruct)(struct __byte_buffer *Inst);
+    void (*const reset)(struct __byte_buffer *Inst);
     /** Инициализирует буффер */
     int (*const init)(struct __byte_buffer *Inst, const size_t Size);
     /** Изменяет размер буффера.
@@ -14,7 +15,7 @@ typedef struct __byte_buffer {
     /** Передаёт массив в адрес Tgt, а размер в Size.
      * Для предотвращения утечек памяти по завершению работы с ней
      * необходимо вызвать функцию 'free(Tgt)' */
-    int (*const release)(struct __byte_buffer *Inst, void **Tgt, size_t *Size);
+    int (*const release)(struct __byte_buffer *Inst, void ** Tgt, size_t *Size);
     /** Захватывает массив 'Bytes'.
      * при вызове деструктора память занятая 'Bytes' будет
      * освобождена вызовом функции 'free(Bytes)' */
@@ -26,7 +27,8 @@ typedef struct __byte_buffer {
      * 'Dest.clone()' необходимо вызвать метод 'Dest.release()',
      * в противном случае может возникнуть ошибка 'SIGSEGV'.
      * В случае ошибки 'Dest' останется не тронутым. */
-    int (*const clone)(struct __byte_buffer *Dest, struct __byte_buffer *Source);
+    int (*const clone)(struct __byte_buffer *Dest, const struct __byte_buffer *Source);
+    int (*const swap)(struct __byte_buffer *Left, struct __byte_buffer *Right);
     
     /** Массив байтов */
     unsigned char *bytes;
@@ -34,17 +36,31 @@ typedef struct __byte_buffer {
     const size_t size;
     /** Реальный размер массива */
     const size_t __private_rsz;
+    const size_t __private_flags;
 } bytebuffer_t;
 
-bytebuffer_t* byte_buffer_construct();
-bytebuffer_t* byte_buffer_clone(bytebuffer_t *Src);
+/** Коеструктор класса буффер.
+ * При вызове с параметром 'Tgt = 0' выделяет динамическую память,
+ * в противном случае - инициализирует объект по указателю */
+bytebuffer_t* new_byte_buffer(bytebuffer_t* Tgt);
+/** Коеструктор класса буффер.
+ * создаёт точную копию 'Src' и размещает её в динамической
+ * памяти. Если память выделять не требуется, то стоит
+ * воспользоваться методом 'bytebuffer_t::clone()' */
+bytebuffer_t* new_byte_buffer_clone(bytebuffer_t *Src);
+
 #ifdef __byte_buffer_c__
+    enum enum_byte_buffer_flags {
+        BYTEBUFF_FLAG_DYNINST = 0b1
+    };
     int byte_buffer_init(bytebuffer_t *Inst, const size_t Size);
     void byte_buffer_destruct(bytebuffer_t *Inst);
+    void byte_buffer_reset(bytebuffer_t *Inst);
     int byte_buffer_resize(bytebuffer_t *Inst, const size_t NewSize);
     int byte_buffer_release(bytebuffer_t *Inst, void **Tgt, size_t *Size);
     int byte_buffer_assign(bytebuffer_t *Inst, void* Bytes, const size_t Size);
-    int byte_buffer_copy(bytebuffer_t *Dest, bytebuffer_t *Src);
+    int byte_buffer_copy(bytebuffer_t *Dest, const bytebuffer_t *Src);
+    int byte_buffer_swap(bytebuffer_t *Left, bytebuffer_t *Right);
 #endif // __byte_buffer_c__
 
 #endif // __byte_buffer_h__

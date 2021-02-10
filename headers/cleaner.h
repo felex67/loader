@@ -11,45 +11,27 @@
 #include <sys/types.h>
 
 #include "headers/buffer.h"
+/** class __config_cleaner_buffers */
+    
+    /** Рабочий и выходной массивы */
+    struct __config_cleaner_buffers {
+        void (*const destruct)(struct __config_cleaner_buffers *Buffs);
+        int (*const init)(struct __config_cleaner_buffers *Buffs, const size_t Size);
+        void (*const reset)(struct __config_cleaner_buffers *Buffs);
+        int (*const swap)(struct __config_cleaner_buffers *Buffs);
 
-/** class __config_cleaner_errors */
-
-    /** Флаги состояния загрузчика */
-    typedef struct __config_cleaner_flags {
-        // Выделена динамическая память
-        u_int32_t DYNINST : 1;
-        // Массивы инициализированы
-        u_int32_t BUFINIT : 1;
-        // Файл очищен
-        u_int32_t FILECLR : 1;
-    } config_cleaner_flags_t;
-
-    /* Обработчик ошибок исполнения процесса загрузки */
-    struct __config_cleaner_errors {
-        // массив для обработки ошибок
-        char Buff[2048];
-        // номер ошибки
-        int error;
-        // Флаги состояния (union)
-        struct __config_cleaner_flags unFl;
+        bytebuffer_t In;
+        bytebuffer_t Wrk;
     };
 
-    /* Структура-инициализатор обработчика ошибок */
-    extern struct __config_cleaner_errors __config_cleaner_init_struct_errors;
-    
-    // выводит отформатированные ошибки в std::err
-    void config_cleaner_perror(struct __config_cleaner *I, const char * What);
-
 #ifdef __config_cleaner_c__
-    // Инициализатор Структуры массивов
-    extern struct __config_cleaner_buffers __config_cleaner_init_struct_buffers;
-    
-    /**Выделяет память рабочему: Wrk и входному: In массивам,
-     * затем загружает файл во входной массив: In */
-    int config_cleaner_init_buffers(struct __config_cleaner *CL, const char *FileName);
-    /**Деструктор структуры массивов:
+    int config_cleaner_buffers_construct(struct __config_cleaner_buffers *Buffs);
+    /** Деструктор структуры массивов:
      * освобождает раннее выделенную память */
-    void config_cleaner_destruct_buffers(struct __config_cleaner *Inst);
+    void config_cleaner_buffers_destruct(struct __config_cleaner_buffers *Buffs);
+    int config_cleaner_buffers_init(struct __config_cleaner_buffers *Buffs, const size_t Size);
+    void config_cleaner_buffers_reset(struct __config_cleaner_buffers *Buffs);
+    int config_cleaner_buffers_swap(struct __config_cleaner_buffers *Buffs);
 #endif // __config_cleaner_c__
 
 /** class __config_cleaner_charset */
@@ -86,70 +68,61 @@
     extern const char __config_cleaner_default_group[];
 
     /* Функция-инициализатор набора символов */
-    int config_cleaner_construct_charset(struct __config_cleaner_charset *CS);
+    int config_cleaner_charset_construct(struct __config_cleaner_charset *CS);
 #endif // __config_cleaner_c__
 
 /* class config_cleaner */
     typedef struct __config_cleaner {
         /* Деструктор загрузчика */
-        void (*destruct)(struct __config_cleaner *Inst);
+        void (*const destruct)(struct __config_cleaner *Inst);
         // Очищает буферы, устанавливает значения по умолчанию
-        void (*reset)(struct __config_cleaner* Inst);
-        // Загружает и отчищает файл от коментариев, удаляет пустые строки
-        int (*load)(struct __config_cleaner *Inst, const char *FileName);
-        // устанавливает типы строчных комментариев
-        int (*set_string_comments)(struct __config_cleaner *I, const char* Keys);
+        void (*const reset)(struct __config_cleaner* Inst);
         // очищает буферы
-        void (*clear)(struct __config_cleaner *I);
-        // Выводит информацию об ошибке в std::cerr
-        void (*perror)(struct __config_cleaner *Inst, const char *What);
-        
+        void (*const resetBuff)(struct __config_cleaner *I);
+        // Загружает и отчищает файл от коментариев, удаляет пустые строки
+        int (*const load)(struct __config_cleaner *Inst, const char *FileName);
+        // устанавливает типы строчных комментариев
+        int (*const set_string_comments)(struct __config_cleaner *I, const char* Keys);
+        // Отпускает выходной массив
+        int (*const release)(struct __config_cleaner *Inst, void **Dest, size_t *DestSz);
 
         /* Атрибуты, или поля, или как там ещё =D */
-        // Структура массивов
-        bytebuffer_t *__private_in;
-        bytebuffer_t *__private_wrk;
 
+        // Структура массивов
+        const struct __config_cleaner_buffers __private_buffs;
         // Набор символов
-        struct __config_cleaner_charset Charset;
-        // Обработчик ошибок
-        struct __config_cleaner_errors Errors;
-        // Выходная структура группированных переменных
-        //struct __config_cleaner_var_groups Config;
-        // Указатель на входной массив
-        const char * const *Result;
-        // Указатель на "полезный" размер входного массива
-        const size_t *const Size;
+        const struct __config_cleaner_charset __private_char;
+        const size_t __private_flags;
     } ConfigCleaner;
+    
     /* конструктор загрузчика конфигурационных файлов */
-    ConfigCleaner* config_cleaner_construct(void* ptr);
+    ConfigCleaner* new_config_cleaner(ConfigCleaner* Inst);
     
 #ifdef __config_cleaner_c__
+    enum enum_config_cleaner_flags {
+        CONFCLNR_FLAGS_DYNINST = 0b1
+    };
 /* config_cleaner */
-        extern ConfigCleaner __config_cleaner_init_struct;
         /* Деструктор загрузчика конфигурационных файлов */
         void config_cleaner_destruct(ConfigCleaner *Inst);
         // Очищает массивы, устанавливает значения по умолчанию
         void config_cleaner_reset(ConfigCleaner *Inst);
-        // Main method of config_cleaner, loads & processes config file
+        // Очищает массивы
+        void config_cleaner_reset_buffers(ConfigCleaner *Inst);
+        // Загружает файл, очищает от коментариев и удаляет пустые строки
         int config_cleaner_process_file(ConfigCleaner *CL, const char *FileName);
         // set user comment types
         int config_cleaner_set_scomments(ConfigCleaner *I, const char *Keys);
         // cleans the file from comments and spaces
         int config_cleaner_clean_file(ConfigCleaner *I);
-        // 1 - если успешно загружен, 0 - в случае ошибки
-        int config_cleaner_isInit(ConfigCleaner *Inst);
         // удаляет пустые строки
-        int config_cleaner_delete_emty_strings(struct __config_cleaner_buffers *I);
+        int config_cleaner_delete_emty_strings(struct __config_cleaner *I);
+        // Отпускает выходной массив
+        int config_cleaner_release(ConfigCleaner *Inst, void **Dest, size_t *DestSize);
 
-/* Buffers */
-        // инициализирует буфферы и считывает в них файл
-        int config_cleaner_init_buffers(struct __config_cleaner *CL, const char *FileName);
-        // меняет буфферы местами
-        void config_cleaner_swap_buffers(struct __config_cleaner_buffers *B);
 /* Charset */
         // sort characters
-        int config_cleaner_sort_charset(struct __config_cleaner_charset *CS);
+        int config_cleaner_charset_sort(struct __config_cleaner_charset *CS);
         
 /* Other */
         // сортирует строку по возрастанию

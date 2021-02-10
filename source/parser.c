@@ -27,7 +27,7 @@
     };
 
     /** Конструктор интерпритатора */
-    ConfigParser* config_parser_construct(ConfigParser *Ptr) {
+    ConfigParser* new_config_parser(ConfigParser *Ptr) {
         ConfigParser (*Inst) = Ptr;
         if (nullptr == Inst) {
             Inst = (ConfigParser*)malloc(sizeof(ConfigParser));
@@ -105,22 +105,24 @@
         return -1;
     }
     /** Инициализатор исходного массива */
-    int config_parser_init_source(ConfigParser *Inst, const char *Src) {
+    int config_parser_init_source(ConfigParser *Inst, const char *File) {
+        ConfigCleaner *Cleaner;
         int result = -1;
-        if ((nullptr != Inst) && (nullptr != Src)) {
+        if ((nullptr != Inst) && (nullptr != File)) {
             if (Inst->__private_flags.SRCINT) config_parser_destruct_src(Inst);
-            size_t len = strlen(Src);
-            char *src = (char*)malloc(len + 1);
-            if (nullptr != src) {
-                strcpy(src, Src);
-                *((char**)&(Inst->__private_src)) = src;
-                *((size_t*)&(Inst->__private_srcsz)) = len;
-                config_parser_set_flag(Inst, CP_FLAG_SRCINT);
-                if (-1 != (result = Inst->__private_count(Inst))) {
-                    if (-1 != (result = config_parser_init_map(Inst))) {
-                        result = Inst->__private_build(Inst);
+            if (nullptr != (Cleaner = new_config_cleaner(0))) {
+                if (-1 != (result = Cleaner->load(Cleaner, File))) {
+                    if (-1 != (result = Cleaner->release(Cleaner, (void**)&Inst->__private_src, (size_t*)&Inst->__private_srcsz))) {
+                        Cleaner->resetBuff(Cleaner);
+                        config_parser_set_flag(Inst, CP_FLAG_SRCINT);
+                        if (-1 != (result = Inst->__private_count(Inst))) {
+                            if (-1 != (result = config_parser_init_map(Inst))) {
+                                result = Inst->__private_build(Inst);
+                            }
+                        }
                     }
                 }
+                Cleaner->destruct(Cleaner);
             }
         }
         else {
@@ -207,11 +209,7 @@
 /** Основные методы */
 
     int config_parser_count_map(ConfigParser *Inst) {
-        char Msg[256];
-        char Date[48];
-        time_t now;
         int result = -1;
-
         if ((nullptr != Inst) && (Inst->__private_flags.SRCINT)) {
             if (!Inst->__private_flags.BTPUSR) {
                 result = config_parser_count_default(Inst);
@@ -268,7 +266,7 @@
             result = Inst->__private_builder (
                 *((parser_group_t**)&Inst->__private_map)
                 , *((unsigned char**)&Inst->__private_src)
-                , Inst->__private_srcsz
+                , Inst->__private_srcsz - 1
                 , Inst->__private_gc
                 , Inst->__private_vc
             );
@@ -394,27 +392,33 @@
      * Var2=Value
      * ... */
     int config_parser_count_default1(const unsigned char *Buff, const size_t SrcSz, size_t *Grps, size_t *Vars) {
+        unsigned char gprstart[] = { '\n', 0x00, 0x00 };
+        size_t gslen = 0;
         unsigned char *in;
-        size_t *grps;
-        size_t *vars;
         size_t pi = 1;
-        unsigned char gprstart[] = { '\n', in[0], 0x00 };
+        int result = -1;
         if (Buff && SrcSz && Grps && Vars) {
-            in = (unsigned char *)Buff;
-            grps = Grps;
-            vars = Vars;
-
-            ++(*grps);
+            in = *(unsigned char **)&Buff;
+            gprstart[1] = Buff[0];
+            gslen = strlen((const char*)gprstart);
+            ++(*Grps);
             
             for (pi = 1; 0 != in[pi]; pi++) {
-                if ('\n' < in[pi]) {}
-                else if (('\n' == in[pi]) && ('[' != in[pi + 1])) { ++pi; ++(*vars); }
-                else if (('\n' == in[pi]) && ('[' == in[pi + 1])) { ++pi; ++(*grps); }
+                if ((gprstart[0] != in[pi]) && ('=' != in[pi])) {}
+                else if ('=' == in[pi]) {
+                    while ((pi < SrcSz) && ('\n' != in[pi])) { ++pi; }
+                    --pi; ++(*Vars);
+                }
+                else if ((gprstart[0] == in[pi]) && (0 == strncmp((char*)gprstart, (char*)(in + pi), gslen))) {
+                    pi += gslen;
+                    while ((pi < SrcSz) && ('\n' != in[pi])) { ++pi; }
+                    --pi; ++(*Grps);
+                }
             }
-            return 0;
+            errno = result = EXIT_SUCCESS;
         }
         errno = EINVAL;
-        return -1;
+        return result;
     }
     /** Создаёт структуру из конфига вида:
      * Var1=Value
@@ -446,15 +450,15 @@
      * Var1=Value
      * Var2=Value
      * ... */
-    int config_parser_build_default1(parser_group_t *m, unsigned char *s, const size_t sz, const size_t gc, const size_t vc) {
+    int config_parser_build_default1(parser_group_t *m, unsigned char *s, const size_t Sz, const size_t gc, const size_t vc) {
         const parser_variable_t *vs = m->Vars;
         size_t p = 0;
         int r = 0;
-        for (size_t g = 0; (p < sz) && (g < gc) && !r; g++) {
+        for (size_t g = 0; (p < Sz) && (g < gc) && !r; g++) {
             if (s[p] == '[') {
                 *((const parser_variable_t**)&m[g].Vars) = vs;
                 if (!(r = config_parser_scan_grp(m + g, s, &p))) {
-                    for (size_t v = 0; (p < sz) && ('[' != s[p]) && !r; v++) {
+                    for (size_t v = 0; (p < Sz) && ('[' != s[p]) && !r; v++) {
                         if ('\n' == s[p])s[p++] = 0;
                         if (!(r = config_parser_scan_var(m[g].Vars + v, s, &p))) {
                             r = config_parser_scan_val(m[g].Vars + v, s, &p);
@@ -467,7 +471,7 @@
                     }
                 }
             }
-            else {
+            else if (s[p]) {
                 errno = EILSEQ;
                 r = -1;
             }

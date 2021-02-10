@@ -2,6 +2,9 @@
 #define  __config_parser_h__ 1
 
 #include <sys/types.h>
+
+#include "headers/cleaner.h"
+
     struct __config_parser_flags {
         u_int32_t BTPDT1 : 1;
         u_int32_t BTPUSR : 1;
@@ -43,7 +46,7 @@
         /** Очистка (удаление рабочего массива и установка параметров по умолчанию) */
         void (*const reset)(struct __config_parser *Inst);
         /** Инициализатор исходного массива */
-        int (*const init)(struct __config_parser *Inst, const char *Src);
+        int (*const init)(struct __config_parser *Inst, const char *FileName);
         /** Устанавливает метод построения */
         int (*const set_building_method)(
             struct __config_parser *Inst,
@@ -86,7 +89,7 @@
         int (*const __private_counter)(const unsigned char *Src, const size_t SrcSize, size_t *Grps, size_t *Vars);
         /** Переменная для хранения метода подсчёта групп и переменных */
         int (*const __private_builder)(parser_group_t *Map, unsigned char *Src, const size_t SrcSz, const size_t GrpCnt, const size_t VarCnt);
-/** public: */
+
         // Найдено групп
         const size_t __private_gc;
         // Найдено переменных
@@ -107,7 +110,7 @@
     } ConfigParser;
 
     /** Конструктор интерпритатора */
-    ConfigParser* config_parser_construct(ConfigParser *Inst);
+    ConfigParser* new_config_parser(ConfigParser *Inst);
 
 #ifdef __config_parser_c__
 /** Флаги состояния */
@@ -124,12 +127,10 @@
 
     /** Инициализирует созданный объект */
     int config_parser_preinit_instance(ConfigParser *Inst);
-    /** Инициализатор интерпритатора */
-    int config_parser_init(ConfigParser *Inst, const char *Src);
     /** Инициализатор исходного массива.
      * Перед инициализацией вызывает деструкторы
      * карты переменных и рабочего массива */
-    int config_parser_init_source(ConfigParser *Inst, const char *Src);
+    int config_parser_init_source(ConfigParser *Inst, const char *FileName);
     /** Инициализатор-конструктор карты */
     int config_parser_init_map(ConfigParser *Inst);
     /** Возвращает интерпритатор в исходное состояние */
