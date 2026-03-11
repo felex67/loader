@@ -1,5 +1,2 @@
 .vscode
 build
-includes
-src
-CMakeLists.txt

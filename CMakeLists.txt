@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.5)
+set(INCLUDES includes/ByteBuffer.h)
+set(SOURCES src/ByteBuffer.c)
+add_library(ByteBuffer STATIC ${SOURCES} ${INCLUDES})
+target_include_directories(ByteBuffer PUBLIC includes)
