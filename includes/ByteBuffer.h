@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _BYTEBUFFER_H_
+#define  _BYTEBUFFER_H_ 1
 
 #include <sys/types.h>
 
@@ -81,3 +82,5 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif // !__cplusplus
+
+#endif // !_BYTEBUFFER_H_
